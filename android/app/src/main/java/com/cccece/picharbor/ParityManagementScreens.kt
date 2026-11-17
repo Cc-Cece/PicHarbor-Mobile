@@ -2,6 +2,12 @@
 package com.cccece.picharbor
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -174,12 +180,16 @@ fun ProxyProfilesScreen(vm:HarborViewModel,data:HarborUiData) {
 
 @Composable
 fun ProxyEditorScreen(vm:HarborViewModel,data:HarborUiData) {
+    val focus=LocalFocusManager.current
+    var revealAddress by remember{mutableStateOf(false)}
     var name by remember{mutableStateOf("")};var address by remember{mutableStateOf("")};var text by remember{mutableStateOf("")};var paste by remember{mutableStateOf(false)}
     LaunchedEffect(vm.scanResults){if(vm.scanPurpose=="proxy"&&vm.scanResults.size==1){address=vm.scanResults.first();vm.clearScan()}}
     ProductPage("添加订阅",vm) {
         ProductSection(footer="链接仅保存在本机，不加入诊断报告。") {
-            OutlinedTextField(name,{name=it},label={LText("配置名称")},modifier=Modifier.fillMaxWidth().padding(12.dp))
-            OutlinedTextField(address,{address=it},label={LText("HTTP 或 HTTPS 订阅链接")},visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth().padding(12.dp))
+            OutlinedTextField(name,{name=it},label={LText("配置名称")},singleLine=true,keyboardOptions=KeyboardOptions(imeAction=ImeAction.Next),modifier=Modifier.fillMaxWidth().padding(12.dp))
+            OutlinedTextField(address,{address=it},label={LText("HTTP 或 HTTPS 订阅链接")},singleLine=true,visualTransformation=if(revealAddress)VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Uri,autoCorrectEnabled=false,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),
+                trailingIcon={IconButton(onClick={revealAddress=!revealAddress}){LIcon(if(revealAddress)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(revealAddress)"隐藏订阅地址" else "显示订阅地址")}},modifier=Modifier.fillMaxWidth().padding(12.dp))
         }
         ProductSection {
             ProductAction("下载并添加",enabled=!vm.busy&&address.isNotBlank()){vm.proxyAction{vm.graph.proxy.download(address,name);address="";vm.back()}}

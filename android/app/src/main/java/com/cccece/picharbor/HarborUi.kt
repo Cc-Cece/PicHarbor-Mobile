@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,6 +33,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
@@ -96,6 +100,14 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
     val hasStatus=false
     val snackbar=remember{SnackbarHostState()}
     val pageState=rememberSaveableStateHolder()
+    val focus=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
+    val density=LocalDensity.current
+    val keyboardVisible=WindowInsets.ime.getBottom(density)>0
+    val showBottomBar=vm.page !in setOf("detail","information")&&!keyboardVisible
+    var measuredBar by remember{mutableIntStateOf(0)}
+    val barHeight=if(measuredBar>0)with(density){measuredBar.toDp()} else 80.dp+WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    LaunchedEffect(vm.selectedTab,vm.page){focus.clearFocus();keyboard?.hide()}
     val messageText=localize(vm.message)
     val noticeText=localize(notice)
     LaunchedEffect(messageText){if(messageText.isNotBlank()){snackbar.showSnackbar(messageText);vm.clearMessage()}}
@@ -108,9 +120,6 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
             val rootPages=remember{setOf("photos","backup","activity","settings")}
             val lastRoot=vm.selectedTab.route
 
-            val density=LocalDensity.current
-            var measuredBar by remember{mutableIntStateOf(0)}
-            val barHeight=if(measuredBar>0)with(density){measuredBar.toDp()} else 80.dp+WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             Box(Modifier.weight(1f).fillMaxWidth().consumeWindowInsets(if(hasStatus)WindowInsets.statusBars else WindowInsets(0,0,0,0))) {
                 AnimatedContent(targetState=vm.selectedTab to vm.page,modifier=Modifier.fillMaxSize(),transitionSpec={
                     val tabs=initialState.first!=targetState.first
@@ -119,7 +128,7 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
                     (enter togetherWith fadeOut(tween(180,easing=FastOutSlowInEasing))).using(null)
                 },label="content-transition") { (currentTab,page) ->
                     pageState.SaveableStateProvider(currentTab.route+":"+page) {
-                        val padding=if(page !in setOf("detail","information"))Modifier.padding(bottom=barHeight).windowInsetsPadding(if(hasStatus)WindowInsets(0,0,0,0) else WindowInsets.statusBars) else Modifier.navigationBarsPadding().statusBarsPadding()
+                        val padding=Modifier.padding(bottom=if(showBottomBar)barHeight else 0.dp).statusBarsPadding().then(if(showBottomBar)Modifier else Modifier.navigationBarsPadding()).imePadding()
                         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(padding)) {
                             when(page) {
                                 "photos"->PhotosScreen(vm,data,onPermissions,onPickFiles)
@@ -159,7 +168,7 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
                     }
                 }
                 // This single navigation bar stays mounted for all four root tabs.
-                androidx.compose.animation.AnimatedVisibility(visible=vm.page !in setOf("detail","information"),modifier=Modifier.align(Alignment.BottomCenter),enter=fadeIn(tween(220)),exit=fadeOut(tween(180))) {
+                androidx.compose.animation.AnimatedVisibility(visible=showBottomBar,modifier=Modifier.align(Alignment.BottomCenter),enter=fadeIn(tween(220)),exit=fadeOut(tween(180))) {
                     NavigationBar(modifier=Modifier.onSizeChanged{measuredBar=it.height},containerColor=MaterialTheme.colorScheme.surfaceContainerLow) {
                         listOf(Triple("photos",Icons.Outlined.PhotoLibrary,"\u7167\u7247"),Triple("backup",Icons.Outlined.Cloud,"\u5907\u4efd"),Triple("activity",Icons.Outlined.History,"活动"),Triple("settings",Icons.Outlined.Settings,"设置")).forEach{(route,icon,label)->
                             NavigationBarItem(selected=(if(vm.page in rootPages)vm.page else lastRoot)==route,onClick={if(vm.page!=route)vm.tab(route)},icon={LIcon(icon,label)},label={LText(label)})
@@ -168,7 +177,7 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
                 }
             }
           }
-            SnackbarHost(snackbar,Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(vm.page in setOf("photos","backup","activity","settings"))80.dp else 0.dp))
+            SnackbarHost(snackbar,Modifier.align(Alignment.BottomCenter).then(if(showBottomBar)Modifier.padding(bottom=barHeight) else Modifier.navigationBarsPadding().imePadding()))
         }
         HarborSheets(vm,data,onLogin,onPickTree)
         incoming?.let{offer->AlertDialog(onDismissRequest=vm.graph.computer::rejectIncoming,title={LText("传输到电脑")},
@@ -188,16 +197,29 @@ fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,action:@Composa
 }
 @Composable
 fun SettingsRow(title:String,subtitle:String="",icon:ImageVector?=null,enabled:Boolean=true,onClick:()->Unit,trailing:@Composable (()->Unit)?=null) {
-    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).clickable(enabled=enabled,onClick=onClick)
-        .padding(horizontal=18.dp,vertical=15.dp).heightIn(min=40.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-        if(icon!=null)LIcon(icon,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(23.dp))
-        Column(Modifier.weight(1f)){LText(title,style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurface);if(subtitle.isNotEmpty())LText(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=3.dp))}
-        if(trailing!=null)trailing() else LIcon(Icons.Outlined.ChevronRight,null,tint=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.size(19.dp))
+    val content=MaterialTheme.colorScheme.onSurface.copy(alpha=if(enabled)1f else .38f)
+    val secondary=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=if(enabled)1f else .38f)
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).clickable(enabled=enabled,role=Role.Button,onClick=onClick)
+        .heightIn(min=if(subtitle.isEmpty())56.dp else 72.dp).padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+        if(icon!=null)LIcon(icon,null,tint=if(enabled)MaterialTheme.colorScheme.primary else content,modifier=Modifier.size(24.dp))
+        Column(Modifier.weight(1f)){LText(title,style=MaterialTheme.typography.bodyLarge,color=content);if(subtitle.isNotEmpty())LText(subtitle,style=MaterialTheme.typography.bodySmall,color=secondary,modifier=Modifier.padding(top=3.dp))}
+        CompositionLocalProvider(LocalContentColor provides secondary) {
+            if(trailing!=null)trailing() else LIcon(Icons.Outlined.ChevronRight,null,tint=secondary,modifier=Modifier.size(20.dp))
+        }
     }
 }
 @Composable
 fun ToggleRow(title:String,subtitle:String,checked:Boolean,icon:ImageVector?=null,enabled:Boolean=true,onChange:(Boolean)->Unit) {
-    SettingsRow(title,subtitle,icon,enabled,{onChange(!checked)}){Switch(checked,onCheckedChange=onChange,enabled=enabled)}
+    val color=MaterialTheme.colorScheme.onSurface.copy(alpha=if(enabled)1f else .38f)
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).heightIn(min=if(subtitle.isEmpty())56.dp else 72.dp)
+        .toggleable(value=checked,enabled=enabled,role=Role.Switch,onValueChange=onChange).padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+        if(icon!=null)LIcon(icon,null,tint=if(enabled)MaterialTheme.colorScheme.primary else color,modifier=Modifier.size(24.dp))
+        Column(Modifier.weight(1f)) {
+            LText(title,color=color,style=MaterialTheme.typography.bodyLarge)
+            if(subtitle.isNotEmpty())LText(subtitle,color=if(enabled)MaterialTheme.colorScheme.onSurfaceVariant else color,style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(top=3.dp))
+        }
+        Switch(checked=checked,onCheckedChange=null,enabled=enabled)
+    }
 }
 @Composable
 fun SettingGroup(content:@Composable ColumnScope.()->Unit){Column(Modifier.fillMaxWidth().animateContentSize().clip(RoundedCornerShape(24.dp)),verticalArrangement=Arrangement.spacedBy(2.dp),content=content)}

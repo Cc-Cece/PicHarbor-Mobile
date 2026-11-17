@@ -1410,3 +1410,5 @@
 "暂无日志"	"No retained logs"
 "现存覆盖"	"Retained coverage"
 "覆盖日期按现存日志文件计算，事件范围以导出为准。"	"Coverage dates come from retained log files. The export records the actual event range."
+"显示订阅地址"	"Show subscription address"
+"隐藏订阅地址"	"Hide subscription address"

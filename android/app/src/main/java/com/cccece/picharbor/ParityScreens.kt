@@ -6,7 +6,11 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -18,14 +22,30 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 
-/** Locale-specific contexts are not Activities; external intents need a new task. */
+/** Keep share/settings flows in the current task when an Activity is available. */
 fun android.content.Context.openProductIntent(intent:Intent) {
-    startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    var current=this
+    while(current is android.content.ContextWrapper && current !is android.app.Activity) {
+        val base=current.baseContext;if(base===current)break;current=base
+    }
+    if(current is android.app.Activity)current.startActivity(intent)
+    else startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
 @Composable
@@ -66,7 +86,8 @@ fun ProductValue(label:String,value:String,localized:Boolean=true) {
 
 @Composable
 fun ProductAction(label:String,icon:ImageVector?=null,enabled:Boolean=true,onClick:()->Unit) {
-    TextButton(onClick=onClick,enabled=enabled,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=16.dp,vertical=12.dp)) {
+    val focus=LocalFocusManager.current
+    TextButton(onClick={focus.clearFocus();onClick()},enabled=enabled,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=16.dp,vertical=12.dp)) {
         if(icon!=null){LIcon(icon,null);Spacer(Modifier.width(12.dp))}
         LText(label,modifier=Modifier.weight(1f))
     }
@@ -74,24 +95,33 @@ fun ProductAction(label:String,icon:ImageVector?=null,enabled:Boolean=true,onCli
 
 @Composable
 fun ProductPicker(label:String,value:String,options:List<Pair<String,String>>,enabled:Boolean=true,onSelect:(String)->Unit) {
+    val focus=LocalFocusManager.current
     var open by remember{mutableStateOf(false)}
-    Box {
-        SettingsRow(label,options.firstOrNull{it.first==value}?.second?:value,enabled=enabled,onClick={open=true})
-        DropdownMenu(open,{open=false}) {options.forEach{(id,text)->DropdownMenuItem(text={LText(text)},onClick={open=false;onSelect(id)},leadingIcon=if(id==value){{LIcon(Icons.Outlined.Check,null)}}else null)}}
-    }
+    SettingsRow(label,options.firstOrNull{it.first==value}?.second?:value,enabled=enabled,onClick={focus.clearFocus();open=true}) {LIcon(Icons.Outlined.ExpandMore,null)}
+    if(open)AlertDialog(onDismissRequest={open=false},title={LText(label)},text={
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp).selectableGroup()) {
+            items(options,key={it.first}){(id,text)->
+                Row(Modifier.fillMaxWidth().heightIn(min=48.dp).selectable(selected=id==value,enabled=enabled,role=Role.RadioButton,onClick={open=false;onSelect(id)}).padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                    RadioButton(selected=id==value,onClick=null,enabled=enabled)
+                    LText(text,modifier=Modifier.weight(1f))
+                }
+            }
+        }
+    },confirmButton={},dismissButton={TextButton(onClick={open=false}){LText("取消")}})
 }
 
 @Composable
 fun ProductSegments(value:String,choices:List<Pair<String,String>>,onSelect:(String)->Unit) {
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal=16.dp)) {
         choices.forEachIndexed { index,(id,label) ->
-            SegmentedButton(selected=value==id,onClick={onSelect(id)},shape=SegmentedButtonDefaults.itemShape(index,choices.size)){LText(label)}
+            SegmentedButton(selected=value==id,onClick={onSelect(id)},shape=SegmentedButtonDefaults.itemShape(index,choices.size)){LText(label,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)}
         }
     }
 }
 
 @Composable
 fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onPickFiles:()->Unit) {
+    val haptic=LocalHapticFeedback.current
     var mediaMenu by remember{mutableStateOf(false)}
     var albums by remember{mutableStateOf(false)}
     var confirm by rememberSaveable{mutableStateOf(false)}
@@ -133,13 +163,13 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
             LText("备份状态以当前账号的记录为准。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=16.dp,vertical=8.dp))
             if(media.isEmpty())Box(Modifier.weight(1f)){EmptyState("没有可显示的项目","调整筛选条件或相册访问权限。",Icons.Outlined.PhotoLibrary)}
             else LazyVerticalGrid(columns=GridCells.Adaptive(112.dp),modifier=Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(2.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) {
-                items(media,key={it.id}){m->Box(Modifier.aspectRatio(1f).combinedClickable(onClick={vm.open(m)},onLongClick={vm.select(m.id)})) {
+                items(media,key={it.id}){m->Box(Modifier.aspectRatio(1f).semantics {if(vm.selectionMode)selected=m.id in vm.selected}.combinedClickable(onClick={vm.open(m)},onLongClick={if(!vm.selectionMode)haptic.performHapticFeedback(HapticFeedbackType.LongPress);vm.select(m.id)})) {
                     AsyncImage(Uri.parse(m.id),m.name,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
                     if(data.status(m)=="uploaded")LIcon(Icons.Outlined.CloudDone,"已备份",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
                     else if(data.status(m)=="uploading")LIcon(Icons.Outlined.Sync,"备份中",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
                     else if(data.status(m)=="error")LIcon(Icons.Outlined.ErrorOutline,"需要处理",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
                     if(m.video)LIcon(Icons.Outlined.PlayArrow,"视频",Modifier.align(Alignment.BottomStart).padding(5.dp),tint=Color.White)
-                    if(vm.selectionMode)Checkbox(m.id in vm.selected,onCheckedChange={vm.select(m.id)},modifier=Modifier.align(Alignment.TopEnd))
+                    if(vm.selectionMode)Checkbox(m.id in vm.selected,onCheckedChange=null,modifier=Modifier.align(Alignment.TopEnd))
                 }}
             }
             if(vm.selectionMode) {
@@ -300,7 +330,7 @@ fun ConnectionScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
 
 @Composable
 fun PermissionsScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onPickTree:()->Unit) {
-    val context=LocalContext.current
+    val context=LocalView.current.context
     ProductPage("相册访问",vm) {
         ProductSection(footer="有限授权仅显示和备份已授权内容。权限减少不会被视为照片已经删除。") {
             ProductValue("当前权限",if(vm.graph.media.fullAccess())"完整访问" else if(vm.graph.media.hasAccess())"有限访问" else "未授权")
@@ -339,7 +369,7 @@ fun DiagnosticsScreen(vm:HarborViewModel,data:HarborUiData,onExport:()->Unit) {
 
 @Composable
 fun AboutScreen(vm:HarborViewModel,data:HarborUiData) {
-    val context=LocalContext.current
+    val context=LocalView.current.context
     ProductPage("关于 PicHarbor",vm) {
         ProductSection {ProductValue("版本",BuildConfig.VERSION_NAME);ProductValue("应用标识",BuildConfig.APPLICATION_ID,false)}
         ProductSection("组件与许可证") {
@@ -353,7 +383,7 @@ fun AboutScreen(vm:HarborViewModel,data:HarborUiData) {
 @Composable
 fun FreeSpaceScreen(vm:HarborViewModel,data:HarborUiData) {
     var alternatives by rememberSaveable{mutableStateOf(false)}
-    val context=LocalContext.current
+    val context=LocalView.current.context
     ProductPage("释放空间",vm) {
         ProductSection {
             LText("通过 Google 相册释放空间",style=MaterialTheme.typography.titleMedium,modifier=Modifier.padding(16.dp))

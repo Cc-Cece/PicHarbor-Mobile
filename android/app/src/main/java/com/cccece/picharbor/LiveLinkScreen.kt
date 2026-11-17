@@ -1,6 +1,11 @@
 package com.cccece.picharbor
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -10,6 +15,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun LiveLinkScreen(vm:HarborViewModel,data:HarborUiData) {
+    val focus=LocalFocusManager.current
     val link=vm.graph.computer
     val progress by link.progress.collectAsState()
     var host by rememberSaveable {mutableStateOf("")}
@@ -41,10 +47,10 @@ fun LiveLinkScreen(vm:HarborViewModel,data:HarborUiData) {
                 TextButton(onClick={vm.scanQr("computer",false)},enabled=!progress.busy){LText("扫描电脑二维码")}
                 TextButton(onClick={vm.scanQr("computer",true)},enabled=!progress.busy){LText("从图片识别")}
             }
-            OutlinedTextField(host,{host=it},label={LText("地址")},singleLine=true,enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
-            OutlinedTextField(port,{port=it},label={LText("端口")},singleLine=true,enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
-            OutlinedTextField(fingerprint,{fingerprint=it},label={LText("证书前 16 位或完整指纹")},singleLine=true,enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
-            OutlinedTextField(code,{code=it},label={LText("配对码")},singleLine=true,enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(host,{host=it},label={LText("地址")},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Uri,autoCorrectEnabled=false,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(port,{port=it},label={LText("端口")},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,autoCorrectEnabled=false,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(fingerprint,{fingerprint=it},label={LText("证书前 16 位或完整指纹")},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Ascii,autoCorrectEnabled=false,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(code,{code=it},label={LText("配对码")},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Ascii,autoCorrectEnabled=false,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
             }
             ProductSection("传输范围") {
             ProductValue("将发送","${data.scope.size} 项")

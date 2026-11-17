@@ -152,7 +152,10 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     }
     fun tab(destination:String){
         val target=MobilePage.from(destination);require(target.root)
-        if(target==selectedTab)return
+        if(target==selectedTab){
+            if(page!=target.route){navigationForward=false;stacks.getValue(target).clear();restore(MobileNavigationEntry(target));sheet=""}
+            return
+        }
         tabEntries[selectedTab]=entry();selectedTab=target
         restore(tabEntries[target]?:MobileNavigationEntry(target));sheet=""
     }

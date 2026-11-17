@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -43,7 +44,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
     val pair=remember(media,data.media){if(media.video)null else LivePhotoPairing.findPair(media,data.media)}
     var playingLive by remember(media.id){mutableStateOf(false)}
     var filename by remember{mutableStateOf(false)}
-    val context=LocalContext.current
+    val context=LocalView.current.context
     val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         PageTitle("照片详情",vm,action={

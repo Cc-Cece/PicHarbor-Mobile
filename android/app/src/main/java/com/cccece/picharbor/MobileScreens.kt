@@ -5,6 +5,11 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,11 +49,12 @@ fun ConfirmationSettingsScreen(vm:HarborViewModel,data:HarborUiData) {
 
 @Composable
 fun ArchiveSettingsScreen(vm:HarborViewModel,data:HarborUiData) {
+    val focus=LocalFocusManager.current
     var days by remember(data.settings.archiveDays){mutableStateOf(data.settings.archiveDays.toString())}
     ProductPage("活动记录",vm) {
         ProductSection(footer="归档只改变活动列表，不删除照片或备份记录。") {
             ToggleRow("自动归档","仅归档已完成的任务",data.settings.archiveEnabled,enabled=!vm.busy){vm.setBoolean("archiveEnabled",it)}
-            OutlinedTextField(value=days,onValueChange={days=it},label={LText("保留天数")},isError=days.toIntOrNull() !in 1..90,singleLine=true,modifier=Modifier.fillMaxWidth().padding(16.dp))
+            OutlinedTextField(value=days,onValueChange={days=it},label={LText("保留天数")},isError=days.toIntOrNull() !in 1..90,singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),modifier=Modifier.fillMaxWidth().padding(16.dp))
             ProductAction("保存",enabled=!vm.busy&&days.toIntOrNull() in 1..90){days.toIntOrNull()?.let{vm.setInteger("archiveDays",it)}}
         }
         ProductSection {SettingsRow("归档记录",onClick={vm.navigate("archives")})}
