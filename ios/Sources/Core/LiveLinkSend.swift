@@ -1,0 +1,736 @@
+import Foundation
+import Combine
+import CryptoKit
+import Photos
+import UIKit
+import Darwin
+
+enum LiveLinkDevice {
+    static func model() -> String {
+        var system = utsname()
+        uname(&system)
+        let machine = withUnsafeBytes(of: &system.machine) { raw -> String in
+            guard let base = raw.bindMemory(to: CChar.self).baseAddress else { return "" }
+            return String(cString: base)
+        }.trimmingCharacters(in: .whitespacesAndNewlines)
+        return machine.isEmpty ? "iPhone" : String(machine.prefix(80))
+    }
+
+    static func name() -> String {
+        let value = UIDevice.current.name.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? "iPhone" : String(value.prefix(80))
+    }
+}
+
+private struct LiveLinkHashEntry: Codable {
+    var sha256: String
+    var size: Int64
+}
+
+private final class LiveLinkHashCache {
+    private var values: [String: LiveLinkHashEntry] = [:]
+    private let url: URL
+    init() {
+        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("PicHarbor/LiveLink", isDirectory: true)
+        url = folder.appendingPathComponent("hashes.json")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        if let data = try? Data(contentsOf: url), let decoded = try? JSONDecoder().decode([String: LiveLinkHashEntry].self, from: data) {
+            values = decoded
+        }
+    }
+    func hash(key: String, size: Int64) -> String? {
+        guard let entry = values[key], entry.size == size, LiveLinkCheck.isHex(entry.sha256, count: 64) else { return nil }
+        return entry.sha256
+    }
+    func store(key: String, sha256: String, size: Int64) {
+        values[key] = LiveLinkHashEntry(sha256: sha256, size: size)
+        if let data = try? JSONEncoder().encode(values) { try? data.write(to: url, options: .atomic) }
+    }
+}
+
+private final class LiveLinkFileWriter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let handle: FileHandle
+    private let url: URL
+    private var request: PHAssetResourceDataRequestID?
+    private var resumed = false
+    private var failure: Error?
+    private var cancelled = false
+
+    init(url: URL) throws {
+        self.url = url
+        guard FileManager.default.createFile(atPath: url.path, contents: nil) else { throw LiveLinkFailure.file }
+        do { handle = try FileHandle(forWritingTo: url) }
+        catch { try? FileManager.default.removeItem(at: url); throw LiveLinkFailure.file }
+    }
+
+    func append(_ data: Data) {
+        let request = lock.withLock { () -> PHAssetResourceDataRequestID? in
+            guard failure == nil, !cancelled, !resumed else { return nil }
+            do { try handle.write(contentsOf: data); return nil }
+            catch { failure = error; return self.request }
+        }
+        if let request { PHAssetResourceManager.default().cancelDataRequest(request) }
+    }
+
+    func attach(_ id: PHAssetResourceDataRequestID) {
+        let stop = lock.withLock { () -> Bool in
+            request = id
+            return cancelled || failure != nil || resumed
+        }
+        if stop { PHAssetResourceManager.default().cancelDataRequest(id) }
+    }
+
+    func cancel() {
+        let request = lock.withLock { () -> PHAssetResourceDataRequestID? in
+            cancelled = true
+            return self.request
+        }
+        if let request { PHAssetResourceManager.default().cancelDataRequest(request) }
+    }
+
+    func finish(_ error: Error?, _ continuation: CheckedContinuation<Void, Error>) {
+        let decision = lock.withLock { () -> (Bool, Error?) in
+            guard !resumed else { return (false, nil) }
+            resumed = true
+            try? handle.close()
+            if cancelled { return (true, CancellationError()) }
+            return (true, failure ?? error)
+        }
+        guard decision.0 else { return }
+        if let error = decision.1 {
+            try? FileManager.default.removeItem(at: url)
+            continuation.resume(throwing: error)
+        } else {
+            continuation.resume()
+        }
+    }
+}
+
+enum LiveLinkFiles {
+    struct Prepared {
+        var item: LiveLinkManifestItem
+        var url: URL
+        var cacheKey: String
+    }
+
+    static func parts(_ asset: PHAsset) -> [(PHAssetResource, String)] {
+        let resources = PHAssetResource.assetResources(for: asset)
+        func pick(_ types: [PHAssetResourceType]) -> PHAssetResource? {
+            for type in types {
+                if let found = resources.first(where: { $0.type == type }) { return found }
+            }
+            return nil
+        }
+        if asset.mediaType == .video {
+            guard let video = pick([.video, .fullSizeVideo]) else { return [] }
+            return [(video, "video")]
+        }
+        guard asset.mediaType == .image, let photo = pick([.photo, .fullSizePhoto]) else { return [] }
+        var result = [(photo, "still")]
+        if asset.mediaSubtypes.contains(.photoLive), let video = pick([.pairedVideo, .fullSizePairedVideo]) {
+            result.append((video, "video"))
+        }
+        return result
+    }
+
+    static func fileName(_ resource: PHAssetResource, role: String) -> String {
+        let raw = (resource.originalFilename as NSString).lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty || raw == "." || raw == "/" { return role == "video" ? "video.mov" : "photo.heic" }
+        return raw
+    }
+
+    static func export(resource: PHAssetResource, to url: URL, network: Bool) async throws {
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        let writer = try LiveLinkFileWriter(url: url)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let options = PHAssetResourceRequestOptions()
+                options.isNetworkAccessAllowed = network
+                let id = PHAssetResourceManager.default().requestData(for: resource, options: options, dataReceivedHandler: { writer.append($0) }) { error in
+                    writer.finish(error, continuation)
+                }
+                writer.attach(id)
+            }
+        } onCancel: { writer.cancel() }
+    }
+
+    static func sha256(_ url: URL) throws -> (String, Int64) {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        var size: Int64 = 0
+        while true {
+            try Task.checkCancellation()
+            guard let data = try handle.read(upToCount: 1024 * 1024), !data.isEmpty else { break }
+            hasher.update(data: data)
+            size += Int64(data.count)
+        }
+        guard size > 0 else { throw LiveLinkFailure.file }
+        return (hasher.finalize().map { String(format: "%02x", $0) }.joined(), size)
+    }
+
+    static func read(url: URL, offset: Int64, length: Int) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: UInt64(offset))
+        var data = Data()
+        data.reserveCapacity(length)
+        while data.count < length {
+            guard let piece = try handle.read(upToCount: length - data.count), !piece.isEmpty else { throw LiveLinkFailure.file }
+            data.append(piece)
+        }
+        return data
+    }
+
+    static func cloudOnly(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == PHPhotosErrorDomain && ns.code == PHPhotosError.Code.networkAccessRequired.rawValue { return true }
+        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? Error { return cloudOnly(underlying) }
+        return false
+    }
+}
+
+@MainActor
+final class LiveLinkController: ObservableObject {
+    static let shared = LiveLinkController()
+    @Published var saved: SavedComputer?
+    @Published var busy = false
+    @Published var status = ""
+    @Published var message = ""
+    @Published var currentFile = ""
+    @Published var fraction = 0.0
+    @Published var skipped = 0
+    @Published var sentCount = 0
+    @Published var hadCount = 0
+    @Published var failedCount = 0
+    @Published var started = false
+    @Published var allowCloud = false
+    @Published var incomingCount = 0
+    @Published var incomingTitle = ""
+    @Published var incomingScope: String?
+    @Published var incomingReady = false
+    private var task: Task<Void, Never>?
+    private var presenceTask: Task<Void, Never>?
+    private var run = 0
+    private var connection: LiveLinkConnection?
+    private var incomingId: String?
+    private var incomingAssets: [PHAsset] = []
+    private var conflictShown = false
+    private var responding = false
+    private let http = LiveLinkHTTP()
+    private let cache = LiveLinkHashCache()
+
+    func reload() { saved = LiveLinkStore.computer() }
+
+    func forget() {
+        LiveLinkStore.forgetComputer()
+        saved = nil
+        connection = nil
+        message = ""
+    }
+
+    func stop() { task?.cancel() }
+
+    func startPresence() {
+        LiveLinkIdentityFile.prepare()
+        guard presenceTask == nil else { return }
+        presenceTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.checkIn()
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    func stopPresence() {
+        presenceTask?.cancel()
+        presenceTask = nil
+    }
+
+    func confirmIncoming() {
+        guard let offerId = incomingId, incomingReady, !busy else { return }
+        let assets = incomingAssets
+        let offerScope = incomingScope
+        responding = true
+        clearIncoming()
+        begin(trackSend: true) { [self] in
+            defer { responding = false }
+            guard let link = try await refreshedConnection() else {
+                message = L10n.text("请再配对一次这台电脑。")
+                return
+            }
+            status = L10n.text("将发送 {0} 项到电脑", [String(assets.count)])
+            // Shared-core scope check for the incoming offer, judged
+            // on a real asset. A core scope rejection
+            // (`INVALID_SCOPE`) rejects the offer; `requires_confirmation`
+            // is honored by the accept below plus the computer's own
+            // confirmation — no transfer starts without it.
+            if let first = assets.first, let criteria = try? LiveLinkScope.parse(offerScope ?? "all") {
+                let groups = LiveLinkScope.groups()
+                var albumIDsByAsset: [String: [String]] = [:]
+                for group in groups { for id in group.ids { albumIDsByAsset[id, default: []].append(group.album.id) } }
+                let assetDict = LiveLinkScope.assetDictionary(for: first, albumIDs: albumIDsByAsset[first.localIdentifier] ?? [], size: nil)
+                let scopeCheck = await HarborModel.shared.coreAdapter.livelinkScope(scope: criteria.scopeDictionary, asset: assetDict)
+                if scopeCheck?.scopeValid != true {
+                    message = L10n.text("不支持此备份范围，请更新 PicHarbor。")
+                    try? await http.reject(connection: link, offerId: offerId)
+                    return
+                }
+            }
+            // Receiver confirmation gate (incoming direction): the user
+            // confirmed with the `confirmIncoming` tap, and the computer
+            // must accept before any transfer. A Live Photo is one media
+            // item: its photo + paired video travel together.
+            try await http.accept(connection: link, offerId: offerId)
+            do {
+                if !assets.isEmpty { try await transfer(link, assets: assets, allowCloud: allowCloud) }
+                try? await http.finish(connection: link, offerId: offerId, success: failedCount == 0 && skipped == 0, error: failedCount > 0 || skipped > 0 ? L10n.text("部分原件未能发送，请检查权限及云端原件设置后重试。") : nil)
+            } catch {
+                try? await http.finish(connection: link, offerId: offerId, success: false, error: error.localizedDescription)
+                throw error
+            }
+            status = failedCount > 0 || skipped > 0 ? L10n.text("部分原件未能发送，可重新发起重试。") : L10n.text("发送完成")
+            fraction = 1
+        }
+    }
+
+    func declineIncoming() {
+        guard !responding else { return }
+        let offerId = incomingId
+        let link = connection
+        clearIncoming()
+        guard let offerId, let link else { return }
+        Task { try? await http.reject(connection: link, offerId: offerId) }
+    }
+
+    private func clearIncoming() {
+        incomingId = nil
+        incomingTitle = ""
+        incomingCount = 0
+        incomingAssets = []
+        incomingScope = nil
+        incomingReady = false
+    }
+
+    func connectSaved() {
+        guard let saved, !busy else { return }
+        begin(trackSend: false) { [self] in
+            status = L10n.text("正在连接电脑…")
+            let link = try await open(LiveLinkTarget(host: saved.host, port: saved.port, pin: .full(saved.fingerprint), code: ""))
+            message = L10n.text("已连接 {0}", [link.name])
+        }
+    }
+
+    func send(host: String, port: String, prefix: String, code: String, scanned: String?, assets: [PHAsset], allowCloud: Bool, alts: [String] = []) {
+        guard !busy else { return }
+        self.allowCloud = allowCloud
+        let paired = LiveLinkStore.computer() != nil
+        let usable = LiveLinkIdentityFile.report().usable
+        let formEmpty = host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if !usable && !paired && formEmpty {
+            message = L10n.text("请先配对这台电脑，再用数据线连接一次。")
+            return
+        }
+        if usable && !paired && formEmpty {
+            message = L10n.text("请再配对一次这台电脑。")
+            return
+        }
+        if assets.isEmpty && usable && paired {
+            message = L10n.text("没有可发送的照片或视频。")
+            return
+        }
+        begin(trackSend: true) { [self] in
+            let target = try resolve(host: host, portText: port, prefixText: prefix, codeText: code, scanned: scanned, alts: alts)
+            status = L10n.text("正在连接电脑…")
+            let link = try await open(target)
+            message = L10n.text("已连接 {0}", [link.name])
+            try await checkIn(link)
+            if let blocked = LiveLinkIdentityFile.block(paired: true) {
+                message = blocked
+                return
+            }
+            guard !assets.isEmpty else {
+                message = L10n.text("没有可发送的照片或视频。")
+                return
+            }
+            status = L10n.text("正在等待电脑确认…")
+            // Receiver confirmation gate: no bytes move until the
+            // computer accepts this offer. A Live Photo counts as one
+            // media item here (`assets.count`) and is transferred whole
+            // — photo + paired video together, one manifest, one pair id.
+            let offerId = try await http.offer(connection: link, scope: "library", count: assets.count)
+            guard try await http.waitForComputer(connection: link, offerId: offerId) else {
+                message = L10n.text("电脑没有确认")
+                return
+            }
+            do {
+                try await transfer(link, assets: assets, allowCloud: allowCloud)
+                try? await http.finish(connection: link, offerId: offerId, success: failedCount == 0 && skipped == 0, error: failedCount > 0 || skipped > 0 ? L10n.text("部分原件未能发送，请检查权限及云端原件设置后重试。") : nil)
+            } catch {
+                try? await http.finish(connection: link, offerId: offerId, success: false, error: error.localizedDescription)
+                throw error
+            }
+            status = failedCount > 0 || skipped > 0 ? L10n.text("部分原件未能发送，可重新发起重试。") : L10n.text("发送完成")
+            fraction = 1
+        }
+    }
+
+    private func begin(trackSend: Bool, _ work: @escaping @MainActor () async throws -> Void) {
+        run += 1
+        let ticket = run
+        task?.cancel()
+        busy = true
+        message = ""
+        status = ""
+        currentFile = ""
+        if trackSend {
+            started = true
+            fraction = 0
+            skipped = 0
+            sentCount = 0
+            hadCount = 0
+            failedCount = 0
+        }
+        task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await work()
+            } catch is CancellationError {
+                if ticket == self.run { self.message = L10n.text("已取消") }
+            } catch {
+                if ticket == self.run {
+                    self.connection = nil
+                    self.message = error.localizedDescription
+                }
+            }
+            if ticket == self.run {
+                self.busy = false
+                self.saved = LiveLinkStore.computer()
+            }
+        }
+    }
+
+    private func resolve(host: String, portText: String, prefixText: String, codeText: String, scanned: String?, alts: [String]) throws -> LiveLinkTarget {
+        let hostTrim = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = prefixText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let codeRaw = codeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let extras = alts.filter { LiveLinkCheck.isIPv4($0) && $0 != hostTrim }
+        if hostTrim.isEmpty, prefix.isEmpty, codeRaw.isEmpty, let saved {
+            return LiveLinkTarget(host: saved.host, port: saved.port, pin: .full(saved.fingerprint), code: "")
+        }
+        guard LiveLinkCheck.isIPv4(hostTrim), let port = LiveLinkCheck.port(portText) else { throw LiveLinkFailure.form }
+        if let scannedFull = scanned?.lowercased(), LiveLinkCheck.isHex(scannedFull, count: 64), !prefix.isEmpty, scannedFull.hasPrefix(prefix) {
+            if codeRaw.isEmpty { return LiveLinkTarget(host: hostTrim, port: port, pin: .full(scannedFull), code: "", alts: extras) }
+            guard let code = LiveLinkCheck.pairingCode(codeRaw) else { throw LiveLinkFailure.form }
+            return LiveLinkTarget(host: hostTrim, port: port, pin: .full(scannedFull), code: code, alts: extras)
+        }
+        guard prefix.count == 16 || prefix.count == 64, LiveLinkCheck.isHex(prefix) else { throw LiveLinkFailure.form }
+        let pin: LiveLinkPin = prefix.count == 64 ? .full(prefix) : .prefix(prefix)
+        if codeRaw.isEmpty {
+            guard let saved, saved.host == hostTrim, saved.port == port, pin.accepts(saved.fingerprint) else { throw LiveLinkFailure.form }
+            return LiveLinkTarget(host: saved.host, port: saved.port, pin: .full(saved.fingerprint), code: "", alts: extras)
+        }
+        guard let code = LiveLinkCheck.pairingCode(codeRaw) else { throw LiveLinkFailure.form }
+        return LiveLinkTarget(host: hostTrim, port: port, pin: pin, code: code, alts: extras)
+    }
+
+    private func open(_ target: LiveLinkTarget) async throws -> LiveLinkConnection {
+        if let connection, connection.host == target.host, connection.port == target.port, target.pin.accepts(connection.fingerprint) {
+            return connection
+        }
+        let identity = try LiveLinkStore.loadOrCreate()
+        let link = try await http.establish(target, identity: identity, deviceName: LiveLinkDevice.name())
+        // Shared-core handshake: the paired computer must speak the
+        // scope2/catalog2 capabilities announced in hello. A core
+        // "incompatible" refuses the session; an unknown action (nil)
+        // keeps the local hello flow.
+        if !HarborModel.shared.coreAdapter.available {
+            throw LiveLinkFailure.rejected
+        }
+        connection = link
+        saved = LiveLinkStore.computer()
+        return link
+    }
+
+    private func refreshedConnection() async throws -> LiveLinkConnection? {
+        if let connection { return connection }
+        guard let saved else { return nil }
+        return try await open(LiveLinkTarget(host: saved.host, port: saved.port, pin: .full(saved.fingerprint), code: ""))
+    }
+
+    private func checkIn() async {
+        guard LiveLinkStore.computer() != nil || connection != nil else { return }
+        LiveLinkIdentityFile.prepare()
+        do {
+            guard let link = try await refreshedConnection() else { return }
+            try await checkIn(link)
+        } catch {
+            connection = nil
+        }
+    }
+
+    private var catalogRevision: Int64 = -1
+    private var catalogAt = Date.distantPast
+    private var catalogAuthorization = PHAuthorizationStatus.notDetermined
+    private func checkIn(_ link: LiveLinkConnection) async throws {
+        LiveLinkIdentityFile.prepare()
+        let report = LiveLinkIdentityFile.report()
+        let result = try await http.hello(
+            connection: link,
+            archiveId: report.usable ? report.value : nil,
+            directoryReady: report.directoryReady,
+            unreadable: report.unreadable,
+            name: LiveLinkDevice.name())
+        guard await HarborModel.shared.coreAdapter.livelinkHandshake(capabilities: result.capabilities) == true else { throw LiveLinkFailure.rejected }
+        if let deliver = result.deliver, LiveLinkIdentityFile.write(deliver) {
+            _ = try? await http.hello(connection: link, archiveId: deliver, directoryReady: true, unreadable: false, name: LiveLinkDevice.name())
+        }
+        if result.conflict, !conflictShown {
+            conflictShown = true
+            message = L10n.text("这台手机的身份和电脑上的记录不一致。请确认是不是连错了设备。")
+        }
+        if !busy, let request = try? await http.catalogRequest(connection: link), (request.revision != catalogRevision || Date().timeIntervalSince(catalogAt) > 15 || catalogAuthorization != PHPhotoLibrary.authorizationStatus(for: .readWrite)) {
+            do {
+                let criteria = try LiveLinkScope.parse(request.scope)
+                let groups = LiveLinkScope.groups()
+                let all = await Self.assets(matching: "all")
+                let known = LiveLinkScope.knownSizes(all)
+                let selected = try await Self.sharedMatching(all, criteria: criteria, groups: groups, known: known)
+                // Shared-core scope check for the computer-requested
+                // scope, judged on a real asset (the core needs an
+                // asset to apply album/date/type rules). A core scope
+                // rejection (`INVALID_SCOPE`) reports the scope as
+                // unsupported (caught below); per-asset admission is
+                // the local select above, whose semantics the core
+                // mirrors. `requires_confirmation` is honored by the
+                // offer/accept gate — no transfer ever starts without
+                // receiver confirmation.
+                if let first = selected.first {
+                    var albumIDsByAsset: [String: [String]] = [:]
+                    for group in groups { for id in group.ids { albumIDsByAsset[id, default: []].append(group.album.id) } }
+                    let assetDict = LiveLinkScope.assetDictionary(for: first, albumIDs: albumIDsByAsset[first.localIdentifier] ?? [], size: known[first.localIdentifier])
+                    let scopeCheck = await HarborModel.shared.coreAdapter.livelinkScope(scope: criteria.scopeDictionary, asset: assetDict)
+                    if scopeCheck?.scopeValid != true { throw LiveLinkFailure.rejected }
+                }
+                let albums = groups.map { group -> LiveLinkAlbum in
+                    var value = group.album; value.bytes = group.ids.compactMap { known[$0] }.reduce(0, +); return value
+                }
+                var withoutDates = criteria; withoutDates.dateEnabled = false
+                let withoutDateAssets = criteria.dateEnabled ? (try await Self.sharedMatching(all, criteria: withoutDates, groups: groups, known: known)) : []
+                let unknownDate = withoutDateAssets.filter { $0.creationDate == nil && $0.modificationDate == nil }.count
+                let report = LiveLinkCatalogReport(revision: request.revision, timeZone: TimeZone.current.identifier,
+                    albums: albums, count: selected.count, bytes: selected.compactMap { known[$0.localIdentifier] }.reduce(0, +), unknownSize: selected.filter { known[$0.localIdentifier] == nil }.count, unknownDate: unknownDate)
+                try await http.reportCatalog(connection: link, report: report)
+                catalogRevision = request.revision
+                catalogAt = Date()
+                catalogAuthorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            } catch {
+                let report = LiveLinkCatalogReport(revision: request.revision, timeZone: TimeZone.current.identifier,
+                    albums: [], count: 0, bytes: 0, unknownSize: 0, unknownDate: 0, error: L10n.text("不支持此备份范围，请更新 PicHarbor。"))
+                try? await http.reportCatalog(connection: link, report: report)
+            }
+        }
+        guard !busy, !responding, incomingId == nil else { return }
+        let listed = try await http.offers(connection: link)
+        guard let offer = listed.offers.first(where: { $0.direction == "computer-to-phone" }) else { return }
+        guard (try? LiveLinkScope.parse(offer.scope ?? "all")) != nil else {
+            message = L10n.text("不支持此备份范围，请更新 PicHarbor。")
+            try? await http.reject(connection: link, offerId: offer.id)
+            return
+        }
+        // No asset is known yet at offer-listing time, so the core
+        // scope check runs at confirm time (`confirmIncoming`) with a
+        // real asset; the local parse above is the listing-time gate.
+        incomingId = offer.id
+        incomingScope = offer.scope ?? "all"
+    }
+
+    func prepareIncoming(_ assets: [PHAsset]) {
+        incomingAssets = assets
+        incomingCount = assets.count
+        incomingTitle = L10n.text("将发送 {0} 项到电脑", [String(assets.count)]) + "\n" + ((try? LiveLinkScope.parse(incomingScope ?? "all"))?.summary ?? "")
+        incomingReady = true
+    }
+
+    static func assets(matching scope: String) async -> [PHAsset] {
+        let fetched = await Task.detached(priority: .userInitiated) { () -> [PHAsset] in
+            let options = PHFetchOptions()
+            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            options.predicate = NSPredicate(format: "mediaType == %d OR mediaType == %d", PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
+            var values: [PHAsset] = []
+            PHAsset.fetchAssets(with: options).enumerateObjects { asset, _, _ in values.append(asset) }
+            return values
+        }.value
+        guard let criteria = try? LiveLinkScope.parse(scope) else { return [] }
+        return (try? await sharedMatching(fetched, criteria: criteria, groups: LiveLinkScope.groups(), known: LiveLinkScope.knownSizes(fetched))) ?? []
+    }
+
+    private static func sharedMatching(_ assets: [PHAsset], criteria: LiveLinkScope, groups: [(album: LiveLinkAlbum, ids: Set<String>)], known: [String: Int64]) async throws -> [PHAsset] {
+        let adapter = HarborModel.shared.coreAdapter
+        guard adapter.available else { throw LiveLinkFailure.rejected }
+        var scope = criteria.scopeDictionary
+        if criteria.mode == "default" { scope["default_albums"] = groups.filter { $0.album.isDefault }.map { $0.album.id } }
+        var memberships: [String: [String]] = [:]
+        for group in groups { for id in group.ids { memberships[id, default: []].append(group.album.id) } }
+        var result: [PHAsset] = []
+        for asset in assets {
+            let value = LiveLinkScope.assetDictionary(for: asset, albumIDs: memberships[asset.localIdentifier] ?? [], size: known[asset.localIdentifier])
+            guard let decision = await adapter.livelinkScope(scope: scope, asset: value), decision.scopeValid else { throw LiveLinkFailure.rejected }
+            if decision.inScope { result.append(asset) }
+            if result.count % QueueScaling.chunkSize == 0 { await Task.yield() }
+        }
+        return result
+    }
+
+    private func transfer(_ link: LiveLinkConnection, assets: [PHAsset], allowCloud: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("PicHarborLiveLink-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = LiveLinkDevice.model()
+        let total = assets.count
+        for (index, asset) in assets.enumerated() {
+            try Task.checkCancellation()
+            status = L10n.text("正在准备并核对文件…")
+            fraction = Double(index) / Double(max(total, 1))
+            let prepared = try await prepare(asset, directory: directory, allowCloud: allowCloud)
+            if prepared.isEmpty { continue }
+            status = L10n.text("正在发送 {0}/{1}", [String(index + 1), String(total)])
+            let response = try await http.manifest(connection: link, model: model, items: prepared.map(\.item))
+            guard prepared.allSatisfy({ response.need.contains($0.item.id) || response.have.contains($0.item.id) }) else {
+                failedCount += 1
+                for file in prepared { try? FileManager.default.removeItem(at: file.url) }
+                continue
+            }
+            var sentAsset = false
+            do {
+                for file in prepared {
+                    currentFile = file.item.name
+                    if response.need.contains(file.item.id) {
+                        try await upload(file, connection: link, done: index, total: total)
+                        sentAsset = true
+                    }
+                    try? FileManager.default.removeItem(at: file.url)
+                }
+                if sentAsset { sentCount += 1 } else { hadCount += 1 }
+            } catch {
+                failedCount += 1
+                throw error
+            }
+            fraction = Double(index + 1) / Double(max(total, 1))
+        }
+        currentFile = ""
+    }
+
+    /// One asset, or both parts of one Live Photo, is exported and manifested together.
+    private func prepare(_ asset: PHAsset, directory: URL, allowCloud: Bool) async throws -> [LiveLinkFiles.Prepared] {
+        let parts = LiveLinkFiles.parts(asset)
+        let skippedBefore = skipped
+        if parts.isEmpty { failedCount += 1; return [] }
+        var prepared: [LiveLinkFiles.Prepared] = []
+        var failedPart = false
+        for (resource, role) in parts {
+            try Task.checkCancellation()
+            let name = LiveLinkFiles.fileName(resource, role: role)
+            currentFile = name
+            let ext = (name as NSString).pathExtension
+            let base = directory.appendingPathComponent(UUID().uuidString)
+            let url = ext.isEmpty ? base : base.appendingPathExtension(ext)
+            do {
+                try await LiveLinkFiles.export(resource: resource, to: url, network: allowCloud)
+                let key = LiveLinkScope.resourceKey(asset, role: role)
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let size = (attributes[.size] as? NSNumber)?.int64Value ?? -1
+                guard size > 0 else { throw LiveLinkFailure.file }
+                let sha256: String
+                if let cached = cache.hash(key: key, size: size) {
+                    sha256 = cached
+                } else {
+                    let hashed = try await Task.detached(priority: .userInitiated) { try LiveLinkFiles.sha256(url) }.value
+                    guard hashed.1 == size else { throw LiveLinkFailure.file }
+                    sha256 = hashed.0
+                    cache.store(key: key, sha256: sha256, size: size)
+                }
+                let created = max(Int64(0), Int64(asset.creationDate?.timeIntervalSince1970 ?? 0))
+                let item = LiveLinkManifestItem(id: LiveLinkCrypto.itemID(localIdentifier: asset.localIdentifier, role: role),
+                                                name: name, size: size, created: created,
+                                                sha256: sha256, pairId: LiveLinkCrypto.pairID(asset.localIdentifier), role: role)
+                prepared.append(LiveLinkFiles.Prepared(item: item, url: url, cacheKey: key))
+            } catch is CancellationError {
+                try? FileManager.default.removeItem(at: url)
+                throw CancellationError()
+            } catch {
+                try? FileManager.default.removeItem(at: url)
+                if !allowCloud, LiveLinkFiles.cloudOnly(error) { skipped += 1 }
+                else { failedPart = true }
+            }
+        }
+        if prepared.count != parts.count {
+            if failedPart { failedCount += 1; skipped = skippedBefore }
+            else { skipped = skippedBefore + 1 }
+            // A Live Photo is transferred whole, including when only one resource is cloud-only or inaccessible.
+            for file in prepared { try? FileManager.default.removeItem(at: file.url) }
+            return []
+        }
+        return prepared
+    }
+
+    private func upload(_ file: LiveLinkFiles.Prepared, connection: LiveLinkConnection, done: Int, total: Int) async throws {
+        let url = file.url
+        var item = file.item
+        var offset: Int64 = 0
+        var rehashed = false
+        var restarts = 0
+        var importRetries = 0
+        var networkRetries = 0
+        var stalls = 0
+        // The computer rejects chunks above 8 MB. Stay at 4 MB.
+        let limit = 4 * 1024 * 1024
+        while offset < item.size {
+            try Task.checkCancellation()
+            let within = Double(offset) / Double(max(item.size, 1))
+            fraction = min(1, (Double(done) + within) / Double(max(total, 1)))
+            let length = Int(min(Int64(limit), item.size - offset))
+            let chunk = try await Task.detached(priority: .userInitiated) { try LiveLinkFiles.read(url: url, offset: offset, length: length) }.value
+            do {
+                let step = try await http.put(connection: connection, id: item.id, body: chunk, name: item.name, size: item.size,
+                                              offset: offset, created: item.created, sha256: item.sha256)
+                switch step {
+                case .done:
+                    return
+                case .advance(let received):
+                    if received == offset { stalls += 1; if stalls > 3 { throw LiveLinkFailure.rejected } }
+                    else { stalls = 0 }
+                    offset = received
+                    importRetries = 0
+                    networkRetries = 0
+                case .retry:
+                    importRetries += 1
+                    if importRetries > 3 { throw LiveLinkFailure.rejected }
+                    try await Task.sleep(nanoseconds: 400_000_000)
+                case .restart:
+                    if !rehashed {
+                        let hashed = try await Task.detached(priority: .userInitiated) { try LiveLinkFiles.sha256(url) }.value
+                        rehashed = true
+                        if hashed.0 != item.sha256 || hashed.1 != item.size {
+                            guard hashed.1 == item.size else { throw LiveLinkFailure.file }
+                            item = LiveLinkManifestItem(id: item.id, name: item.name, size: item.size, created: item.created,
+                                                        sha256: hashed.0, pairId: item.pairId, role: item.role)
+                            cache.store(key: file.cacheKey, sha256: hashed.0, size: hashed.1)
+                        }
+                    } else {
+                        restarts += 1
+                        if restarts > 2 { throw LiveLinkFailure.rejected }
+                    }
+                    offset = 0
+                    stalls = 0
+                }
+            } catch LiveLinkFailure.network {
+                networkRetries += 1
+                if networkRetries > 3 { throw LiveLinkFailure.network }
+                try await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
+    }
+}

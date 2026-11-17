@@ -1,0 +1,642 @@
+import XCTest
+import ImageIO
+import UIKit
+import Darwin
+import AVFoundation
+import UniformTypeIdentifiers
+import Photos
+import SwiftUI
+@testable import PicHarbor
+
+final class BackupCoreTests: XCTestCase {
+    @MainActor
+    func testGooglePhotosFreeUpSpaceUsesVerifiedUniversalLink() {
+        XCTAssertEqual(GooglePhotosLauncher.freeUpSpace.absoluteString, "https://photos.google.com/link/freeupspace")
+        XCTAssertEqual(GooglePhotosLauncher.launch.absoluteString, "googlephotos://")
+    }
+    private var previousLanguage: String?
+    override func setUp() {
+        super.setUp()
+        previousLanguage = UserDefaults.standard.string(forKey: "picharbor.language")
+        UserDefaults.standard.set("zh-Hans", forKey: "picharbor.language")
+    }
+    override func tearDown() {
+        if let previousLanguage { UserDefaults.standard.set(previousLanguage, forKey: "picharbor.language") }
+        else { UserDefaults.standard.removeObject(forKey: "picharbor.language") }
+        super.tearDown()
+    }
+    func testLanguageResolutionAndPackagedTranslations() {
+        XCTAssertEqual(AppLanguage.resolved("system", preferred: ["en-GB"]), .english)
+        XCTAssertEqual(AppLanguage.resolved("system", preferred: ["zh-Hans-CN"]), .simplified)
+        XCTAssertEqual(AppLanguage.resolved("system", preferred: ["zh-HK"]), .cantonese)
+        XCTAssertEqual(AppLanguage.resolved("system", preferred: ["yue-Hant-HK"]), .cantonese)
+        XCTAssertEqual(AppLanguage.resolved("en", preferred: ["zh-Hans"]), .english)
+        XCTAssertEqual(L10n.text("备份偏好", language: .english), "Backup preferences")
+        XCTAssertEqual(L10n.text("照片", language: .cantonese), "相片")
+        XCTAssertEqual(L10n.text("已选择 {0} 项", ["{1}.HEIC"], language: .english), "Selected: {1}.HEIC")
+        XCTAssertEqual(L10n.message("Backup preferences"), "备份偏好")
+    }
+    func testDatesUseSelectedLanguageRatherThanBundleEnglishFallback() {
+        let value = Date(timeIntervalSince1970: 1792368000)
+        let chinese = L10n.date(value, date: .long, locale: Locale(identifier: "zh_Hans_CN"))
+        let english = L10n.date(value, date: .long, locale: Locale(identifier: "en_US"))
+        let hongKong = L10n.date(value, date: .long, locale: Locale(identifier: "zh_Hant_HK"))
+        XCTAssertTrue(chinese.contains("月")); XCTAssertFalse(chinese.contains("October"))
+        XCTAssertTrue(hongKong.contains("月")); XCTAssertTrue(english.contains("October"))
+    }
+    func testRestoringDefaultsPreservesAppearanceAndExistingTaskPolicy() throws {
+        var old = BackupSettings(); old.live = .motion; old.quality = .saver; old.edits = .current
+        old.automatic = true; old.scopeConfirmed = true; old.selectedAlbums = ["album"]
+        old.wifiOnly = false; old.syncAlbums = true; old.strictLiveConfirmation = true
+        old.appearance = "dark"
+        let job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: old)
+        let defaults = old.restoringDefaults()
+        XCTAssertEqual(defaults.live, .applePair); XCTAssertEqual(defaults.quality, .original); XCTAssertEqual(defaults.edits, .both)
+        XCTAssertFalse(defaults.automatic); XCTAssertNil(defaults.scopeConfirmed); XCTAssertTrue(defaults.selectedAlbums.isEmpty)
+        XCTAssertTrue(defaults.wifiOnly); XCTAssertFalse(defaults.syncAlbums)
+        XCTAssertFalse(defaults.requiresStrictConfirmation)
+        XCTAssertEqual(defaults.appearance, "dark")
+        let upgraded = try JSONDecoder().decode(BackupJob.self, from: JSONEncoder().encode(job))
+        XCTAssertEqual(upgraded.settings.live, .motion); XCTAssertEqual(upgraded.settings.quality, .saver)
+        XCTAssertEqual(upgraded.dedupKey, job.dedupKey)
+    }
+    @MainActor
+    func testLegacyCleanupKeysAreIgnoredOnDecode() throws {
+        // Stage-2 unification removed the self-built cleanup types
+        // (CleanupEvidence, allowUnverifiedLiveCleanup, cleanupPolicy).
+        // Records written before that still decode: the removed keys
+        // are ignored, and nothing about them grants cleanup eligibility.
+        var settings = BackupSettings()
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as! [String: Any]
+        json["allowUnverifiedLiveCleanup"] = true
+        json["cloudState"] = false
+        json["originalAccess"] = false
+        let decoded = try JSONDecoder().decode(BackupSettings.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(decoded.quality, .original); XCTAssertEqual(decoded.live, .applePair)
+        var job = try pairedJob(); job.state = .completed
+        var jobJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(job)) as! [String: Any]
+        jobJSON["evidence"] = ["account": job.account, "revision": job.assetRevision, "policy": "11",
+                               "manifest": [], "checked": Date().timeIntervalSince1970]
+        let decodedJob = try JSONDecoder().decode(BackupJob.self, from: JSONSerialization.data(withJSONObject: jobJSON))
+        XCTAssertEqual(decodedJob.id, job.id); XCTAssertTrue(decodedJob.hasConfirmedPairs)
+        // No confirmation time was recorded on this job, so there is no
+        // per-item cleanup evidence — the guidance gate stays closed.
+        XCTAssertNil(HarborCoreAdapter.cleanupEvidenceItems(for: decodedJob))
+        // A real cloud confirmation produces exactly one evidence item.
+        var confirmed = try pairedJob(); confirmed.state = .completed
+        confirmed.completedAt = Date(timeIntervalSince1970: 1000)
+        let items = HarborCoreAdapter.cleanupEvidenceItems(for: confirmed)
+        XCTAssertEqual(items?.count, 1)
+        XCTAssertEqual(items?.first?["task_id"] as? String, confirmed.id)
+        XCTAssertEqual(items?.first?["cloud_confirmed"] as? Bool, true)
+        XCTAssertEqual(items?.first?["confirmed_at"] as? Int, 1000)
+    }
+    func testLookupUploadAndSaveHaveDistinctUserFacingStages() throws {
+        var job = try pairedJob(); job.settings.strictLiveConfirmation = false
+        job.resources = [MediaResource(role: "original.photo", path: "p", name: "p")]
+        job.state = .confirming; job.failureStage = "prepare_upload"
+        XCTAssertEqual(job.displayStatus, "检查是否已备份"); XCTAssertEqual(job.flowIndex, 1)
+        job.state = .transferring
+        XCTAssertEqual(job.displayStatus, "上传照片"); XCTAssertEqual(job.flowIndex, 2)
+        job.state = .committing
+        XCTAssertEqual(job.displayStatus, "确认保存"); XCTAssertEqual(job.flowIndex, 3)
+        job.state = .confirming; job.failureStage = "pair_lookup"
+        job.livePairs?[0].submitted = true
+        XCTAssertEqual(job.flowIndex, 3, "An uncertain submitted pair is a save check, not pre-upload dedup")
+        job.isLive = false; job.mediaKind = "video"
+        XCTAssertEqual(job.flowSteps.first, "准备视频"); XCTAssertEqual(job.flowSteps[2], "上传视频")
+    }
+    func testMainTaskMessageKeepsCodesInAdvancedInformation() throws {
+        var job = try pairedJob(); job.error = "ENGINE_ERROR"
+        XCTAssertFalse(job.friendlyMessage.contains("ENGINE_ERROR")); XCTAssertTrue(job.diagnosticText.contains("ENGINE_ERROR"))
+        UserDefaults.standard.set("en", forKey: "picharbor.language")
+        XCTAssertFalse(job.friendlyMessage.contains("ENGINE_ERROR"))
+        UserDefaults.standard.set("zh-Hans", forKey: "picharbor.language")
+        job.error = "REMOTE_MOTION_TRASHED"
+        XCTAssertTrue(job.friendlyMessage.contains("回收站"))
+    }
+    private func pairedJob() throws -> BackupJob {
+        var settings = BackupSettings(); settings.live = .applePair
+        settings.strictLiveConfirmation = true
+        var job = BackupJob(account: "a", assetID: "asset", assetRevision: "v1", settings: settings)
+        job.isLive = true
+        job.resources = [MediaResource(role: "original.photo", path: "p", name: "photo.heic", remoteKey: "same", confirmed: true),
+                         MediaResource(role: "original.pairedVideo", path: "v", name: "video.mov", remoteKey: "same", confirmed: true)]
+        job.livePairs = try LivePairRecord.make(job.resources)
+        job.livePairs?[0].confirmed = true; job.livePairs?[0].remoteKey = "same"
+        return job
+    }
+
+    func testDefaultStandardPolicyMigratesAndRequiresCompleteSavedResources() throws {
+        var settings = BackupSettings(); settings.quality = .quota
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as! [String: Any]
+        json.removeValue(forKey: "strictLiveConfirmation")
+        let migrated = try JSONDecoder().decode(BackupSettings.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertFalse(migrated.requiresStrictConfirmation); XCTAssertEqual(migrated.quality, .quota)
+        var job = try pairedJob(); let identity = job.dedupKey
+        job.settings.strictLiveConfirmation = false
+        XCTAssertEqual(job.dedupKey, identity, "Checking policy must never cause an automatic media re-upload")
+        XCTAssertTrue(job.standardConfirmationPassed)
+        XCTAssertFalse(job.flowSteps.contains("等待云端处理"))
+        job.resources[1].confirmed = false
+        XCTAssertFalse(job.standardConfirmationPassed)
+        job.resources[1].confirmed = true; job.resources[1].remoteKey = "other"
+        XCTAssertFalse(job.standardConfirmationPassed)
+    }
+
+    func testTwoActivityDimensionsPreserveMultiItemBatchWhenOneMatches() throws {
+        var a = try pairedJob(); a.origin = .manual; a.batchID = "batch"; a.state = .completed
+        var b = a; b.id = "b"; b.state = .attention
+        var automatic = a; automatic.id = "automatic"; automatic.batchID = "automatic-batch"; automatic.origin = .automatic
+        var legacy = a; legacy.id = "legacy"; legacy.batchID = nil; legacy.origin = nil
+        let jobs = [a, b, automatic, legacy]
+        let manual = ActivityBatch.make(jobs, source: .manual, status: .unfinished)
+        XCTAssertEqual(manual.count, 1); XCTAssertTrue(manual[0].isBatch)
+        XCTAssertEqual(manual[0].allJobs.count, 2); XCTAssertEqual(manual[0].matching.map(\.id), ["b"])
+        XCTAssertEqual(ActivityBatch.make(jobs, source: .automatic, status: .completed).count, 1)
+        XCTAssertFalse(ActivityBatch.make([legacy], source: .all, status: .all)[0].isBatch)
+        b.state = .cancelled; XCTAssertFalse(ActivityStatus.unfinished.matches(b)); XCTAssertTrue(ActivityStatus.all.matches(b))
+        b.activityHidden = true; XCTAssertTrue(ActivityBatch.make([b], source: .all, status: .all).isEmpty)
+    }
+
+    func testAdvancedDiagnosticExcludesPrivateResourceIdentity() throws {
+        var job = try pairedJob(); job.account = "private@example.test"
+        job.resources[0].name = "private-photo-name.heic"; job.resources[0].sha1 = "private-hash"
+        job.resources[0].remoteKey = "private-cloud-key"; job.resources[0].path = "/private/device/path"
+        for secret in [job.account, job.resources[0].name, job.resources[0].sha1, job.resources[0].remoteKey, job.resources[0].path] {
+            XCTAssertFalse(job.diagnosticText.contains(secret))
+        }
+        XCTAssertTrue(job.diagnosticText.contains(job.id))
+    }
+
+    @MainActor
+    func testStandardAndStrictFlowAppearance() throws {
+        for strict in [false, true] {
+            var job = try pairedJob(); job.settings.strictLiveConfirmation = strict
+            job.state = strict ? .paired : .completed
+            let renderer = ImageRenderer(content: VStack(alignment: .leading, spacing: 20) {
+                Text("备份流程").font(.title2.bold()); TaskFlowView(job: job)
+            }.padding(24).frame(width: 390).background(Color(uiColor: .systemBackground)))
+            guard let image = renderer.uiImage else { return XCTFail("Missing flow render") }
+            let attachment = XCTAttachment(image: image); attachment.name = strict ? "task-flow-strict" : "task-flow-standard"; attachment.lifetime = .keepAlways; add(attachment)
+            XCTAssertEqual(job.flowIndex, strict ? 4 : job.flowSteps.count - 1)
+        }
+    }
+
+    func testBluePairStateRequiresCompleteSameKeyEvidence() throws {
+        var job = try pairedJob()
+        XCTAssertTrue(job.hasConfirmedPairs)
+        job.beginConfirmation()
+        XCTAssertEqual(job.state, .paired); XCTAssertEqual(job.statusSymbol, "checkmark.circle.fill")
+        XCTAssertTrue(job.unfinished); XCTAssertTrue(job.state.active)
+        job.resources[1].remoteKey = "other"
+        XCTAssertFalse(job.hasConfirmedPairs)
+        job.beginConfirmation(); XCTAssertEqual(job.state, .confirming)
+        job = try pairedJob(); job.resources.removeLast()
+        XCTAssertFalse(job.hasConfirmedPairs)
+        job = try pairedJob(); job.livePairs?[0].confirmed = false
+        XCTAssertFalse(job.hasConfirmedPairs)
+    }
+
+    func testConfirmationHasSeparateSchedulingSlotAndShortIndependentRetries() throws {
+        var paired = try pairedJob(); paired.state = .paired
+        let upload1 = BackupJob(account: "a", assetID: "one", assetRevision: "1", settings: BackupSettings())
+        let upload2 = BackupJob(account: "a", assetID: "two", assetRevision: "1", settings: BackupSettings())
+        XCTAssertTrue(paired.canSchedule(alongside: [upload1, upload2]))
+        XCTAssertFalse(paired.canSchedule(alongside: [paired]))
+        XCTAssertTrue(upload1.canSchedule(alongside: [paired, upload2]))
+        XCTAssertFalse(upload1.canSchedule(alongside: [paired, upload1, upload2]))
+        let now = Date(timeIntervalSince1970: 100)
+        for delay in [5.0, 10, 20, 30, 30] {
+            paired.attempts += 1; paired.waitForConfirmation(now: now)
+            XCTAssertEqual(paired.state, .paired)
+            XCTAssertEqual(paired.retryAt, now.addingTimeInterval(delay))
+            XCTAssertEqual(paired.attempts, 0)
+        }
+    }
+
+    func testPairedProgressSurvivesPersistenceWithoutClaimingCompletion() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let store = try BackupStore(url: root.appendingPathComponent("jobs.sqlite"))
+        var job = try pairedJob(); job.beginConfirmation(now: Date(timeIntervalSince1970: 100))
+        job.lastConfirmationSeconds = 2.5; job.waitForConfirmation(now: Date(timeIntervalSince1970: 101))
+        try await store.save(job, kind: "job", id: job.id)
+        let saved = try await store.load(BackupJob.self, kind: "job")
+        XCTAssertEqual(saved.count, 1); XCTAssertEqual(saved[0].state, .paired)
+        XCTAssertTrue(saved[0].hasConfirmedPairs)
+        XCTAssertEqual(saved[0].confirmationChecks, 1)
+        XCTAssertEqual(saved[0].lastConfirmationSeconds, 2.5)
+        XCTAssertNil(saved[0].completedAt)
+    }
+
+    @MainActor
+    func testBluePairStatusNativeAppearance() throws {
+        var job = try pairedJob(); job.beginConfirmation()
+        let renderer = ImageRenderer(content: JobRow(job: job).padding().frame(width: 390).background(Color(uiColor: .systemBackground)))
+        guard let image = renderer.uiImage else { return XCTFail("Missing native status render") }
+        let attachment = XCTAttachment(image: image); attachment.name = "blue-pair-status"; attachment.lifetime = .keepAlways
+        add(attachment)
+        XCTAssertEqual(job.state.title, "即将完成 · 配对已确认")
+    }
+
+    func testSourceWaitingIsBoundedAndDoesNotConsumeNetworkRetries() {
+        var job = BackupJob(account: "a", assetID: "asset", assetRevision: "old", settings: BackupSettings())
+        let now = Date(timeIntervalSince1970: 100)
+        for round in 1...7 {
+            job.attempts += 1; job.error = "SOURCE_SETTLING"
+            job.waitForSource(now: now)
+            XCTAssertEqual(job.attempts, 0)
+            XCTAssertEqual(job.sourceWaits, round)
+            if round <= 6 {
+                XCTAssertEqual(job.state, .waiting)
+                XCTAssertEqual(job.retryAt, now.addingTimeInterval(Double(round) * 5))
+            } else {
+                XCTAssertEqual(job.state, .attention); XCTAssertNil(job.retryAt)
+                XCTAssertEqual(job.error, "SOURCE_SETTLING_LIMIT")
+            }
+        }
+    }
+
+    @MainActor
+    func testPreparationReturnsFreshSnapshotAndStopsAfterBoundedChanges() async throws {
+        var reads = 0
+        let latest = try await SourceStabilityProbe.wait(read: {
+            reads += 1
+            return (reads, reads == 1 ? "old" : "new")
+        }, pause: {})
+        XCTAssertEqual(latest, 4)
+        reads = 0
+        do {
+            _ = try await SourceStabilityProbe.wait(read: { reads += 1; return (reads, String(reads)) }, pause: {})
+            XCTFail("Continuously changing assets must leave the preparation worker")
+        } catch { XCTAssertEqual((error as? HarborError)?.code, "SOURCE_SETTLING") }
+        XCTAssertEqual(reads, 6)
+    }
+
+    @MainActor
+    func testPreparationHonorsPauseAndPermissionLoss() async {
+        for code in ["JOB_PAUSED", "PHOTO_PERMISSION", "WAITING_NETWORK"] {
+            do {
+                _ = try await SourceStabilityProbe.wait(read: { () throws -> (Int, String) in throw HarborError(code) }, pause: {})
+                XCTFail("Must preserve the actionable failure")
+            } catch { XCTAssertEqual((error as? HarborError)?.code, code) }
+        }
+        do {
+            _ = try await SourceStabilityProbe.wait(read: { (1, "same") }, pause: { throw CancellationError() })
+            XCTFail("Cancellation must stop preparation")
+        } catch { XCTAssertTrue(error is CancellationError) }
+    }
+
+    func testFreshSourceDebounceRestartsWhenManifestChanges() {
+        var probe = SourceStabilityProbe()
+        XCTAssertFalse(probe.observe("revision1|photo"))
+        XCTAssertFalse(probe.observe("revision1|photo"))
+        XCTAssertFalse(probe.observe("revision1|photo|pairedVideo"))
+        XCTAssertFalse(probe.observe("revision2|photo|pairedVideo"))
+        XCTAssertFalse(probe.observe("revision2|photo|pairedVideo"))
+        XCTAssertTrue(probe.observe("revision2|photo|pairedVideo"))
+    }
+
+    func testUnpreparedTaskCanRefreshWithoutChangingUserPolicyOrBatch() throws {
+        var policy = BackupSettings(); policy.live = .applePair; policy.quality = .quota
+        var job = BackupJob(account: "a", assetID: "asset", assetRevision: "old", settings: policy)
+        job.batchID = "batch"; job.origin = .manual; job.error = "SOURCE_CHANGED"; job.state = .attention
+        let identity = job.id
+        let oldKey = job.dedupKey
+        try job.refreshSource(revision: "new", live: true, created: Date(timeIntervalSince1970: 1), modified: Date(timeIntervalSince1970: 2))
+        let saved = try JSONDecoder().decode(BackupJob.self, from: JSONEncoder().encode(job))
+        XCTAssertEqual(saved.id, identity); XCTAssertEqual(saved.account, "a")
+        XCTAssertEqual(saved.batchID, "batch"); XCTAssertEqual(saved.settings, policy)
+        XCTAssertNotEqual(saved.dedupKey, oldKey); XCTAssertTrue(saved.isLive)
+        XCTAssertEqual(saved.assetRevision, "new")
+    }
+
+    func testSourceRefreshRejectsExportedOrSubmittedSnapshots() throws {
+        let original = BackupJob(account: "a", assetID: "asset", assetRevision: "old", settings: BackupSettings())
+        let resource = MediaResource(role: "original.photo", path: "still", name: "image.heic")
+        var exported = original; exported.sources = [resource]
+        var transferred = original; transferred.resources = [resource]; transferred.resources[0].submitted = true
+        var paired = original; paired.livePairs = [LivePairRecord(id: "original", photoID: "p", videoID: "v", submitted: true)]
+        var complete = original; complete.state = .completed
+        for var locked in [exported, transferred, paired, complete] {
+            XCTAssertThrowsError(try locked.refreshSource(revision: "new", live: true, created: nil, modified: nil))
+            XCTAssertEqual(locked.assetRevision, "old")
+        }
+    }
+
+    func testOriginalPairResourcesRetainVersionAndRejectIncompleteSets() throws {
+        let originals = [MediaResource(role: "original.photo", path: "still", name: "original.heic", sha256: "photo-original"),
+                         MediaResource(role: "original.pairedVideo", path: "video", name: "original.mov", sha256: "video-original")]
+        let edited = [MediaResource(role: "current.photo", path: "edit", name: "edit.heic", sha256: "photo-edited"),
+                      MediaResource(role: "current.pairedVideo", path: "edit-video", name: "edit.mov", sha256: "video-edited")]
+        let pairs = try LivePairRecord.make(originals + edited)
+        XCTAssertEqual(pairs.count, 2)
+        XCTAssertEqual(pairs[0].photoID, originals[0].id)
+        XCTAssertEqual(pairs[0].videoID, originals[1].id)
+        XCTAssertEqual(pairs[1].photoID, edited[0].id)
+        XCTAssertEqual(pairs[1].videoID, edited[1].id)
+        XCTAssertThrowsError(try LivePairRecord.make([originals[0], edited[1]]))
+        XCTAssertThrowsError(try LivePairRecord.make(originals + [originals[0]]))
+        XCTAssertThrowsError(try LivePairRecord.make([]))
+    }
+
+    func testUncertainPairSubmissionSurvivesStoreAndNetworkChangeAsQueryOnly() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var settings = BackupSettings(); settings.live = .applePair
+        var job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: settings)
+        job.resources = [MediaResource(role: "original.photo", path: "photo", name: "original.heic"),
+                         MediaResource(role: "original.pairedVideo", path: "video", name: "original.mov")]
+        job.resources[0].responsePath = "photo-response"; job.resources[1].responsePath = "video-response"
+        job.livePairs = try LivePairRecord.make(job.resources)
+        job.livePairs?[0].route = "joint"; job.livePairs?[0].submitted = true
+        job.state = .paused; job.updateNetwork(wifiOnly: false)
+        let store = try BackupStore(url: root.appendingPathComponent("pair.sqlite"))
+        try await store.save(job, kind: "job", id: job.id)
+        let reopened = try BackupStore(url: root.appendingPathComponent("pair.sqlite"))
+        let restored = try await reopened.load(BackupJob.self, kind: "job")
+        let pair = try XCTUnwrap(restored.first?.livePairs?.first)
+        XCTAssertTrue(pair.queryOnly)
+        XCTAssertEqual(pair.route, "joint")
+        XCTAssertEqual(restored.first?.state, .paused)
+        XCTAssertEqual(restored.first?.resources[1].responsePath, "video-response")
+        XCTAssertFalse(restored.first?.settings.wifiOnly ?? true)
+    }
+
+    func testStrategyChangesRequireExplicitRebackupRatherThanAutomaticRediscovery() {
+        let first = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: BackupSettings())
+        var other = first; other.settings.live = .applePair; other.settings.quality = .quota
+        XCTAssertNotEqual(first.discoveryKey(origin: .manual), other.discoveryKey(origin: .manual))
+        XCTAssertEqual(first.discoveryKey(origin: .automatic), other.discoveryKey(origin: .automatic))
+        other.assetRevision = "2"
+        XCTAssertNotEqual(first.discoveryKey(origin: .automatic), other.discoveryKey(origin: .automatic))
+        other = first; other.account = "b"
+        XCTAssertNotEqual(first.discoveryKey(origin: .automatic), other.discoveryKey(origin: .automatic))
+        XCTAssertEqual(try? JSONDecoder().decode(LiveStrategy.self, from: Data("\"applePair\"".utf8)), .applePair)
+        XCTAssertEqual(Set(LiveStrategy.allCases.map(\.rawValue)), ["motion", "applePair", "appleReconcile"])
+    }
+    func testNetworkPolicyRebuildsTransportWithoutChangingMediaOrCommitEvidence() {
+        var job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: BackupSettings())
+        job.state = .transferring; job.error = "WAITING_NETWORK"; job.attempts = 2; job.retryAt = .distantFuture
+        var resource = MediaResource(role: "original.motion", path: "source", name: "motion.heic")
+        resource.transportID = 7; resource.responsePath = "response"; resource.remoteKey = "cloud"; resource.submitted = true
+        job.resources = [resource]
+        let identity = job.dedupKey
+        XCTAssertEqual(job.updateNetwork(wifiOnly: false), [7])
+        XCTAssertEqual(job.dedupKey, identity)
+        XCTAssertEqual(job.state, .queued)
+        XCTAssertFalse(job.settings.wifiOnly)
+        XCTAssertNil(job.resources[0].transportID)
+        XCTAssertEqual(job.resources[0].responsePath, "response")
+        XCTAssertEqual(job.resources[0].remoteKey, "cloud")
+        XCTAssertTrue(job.resources[0].submitted)
+        XCTAssertNil(job.retryAt); XCTAssertEqual(job.error, "")
+        job.state = .paused
+        job.updateNetwork(wifiOnly: true)
+        XCTAssertEqual(job.state, .paused)
+        job.state = .completed
+        job.updateNetwork(wifiOnly: false)
+        XCTAssertTrue(job.settings.wifiOnly, "Completed history retains its settings")
+    }
+
+    func testLegacyJobsDecodeWithoutInventingBatchOrOrigin() throws {
+        let job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: BackupSettings())
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(job)) as? [String: Any])
+        for key in ["origin", "batchID", "activityHidden"] { json.removeValue(forKey: key) }
+        let decoded = try JSONDecoder().decode(BackupJob.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(decoded.origin); XCTAssertNil(decoded.batchID); XCTAssertNil(decoded.activityHidden)
+        XCTAssertEqual(decoded.dedupKey, job.dedupKey)
+    }
+
+    func testActivityBatchAndOriginGroupingPreserveMembershipAndExcludeRemovedTasks() throws {
+        var first = BackupJob(account: "a", assetID: "1", assetRevision: "1", settings: BackupSettings())
+        first.origin = .manual; first.batchID = "batch1"; first.created = Date(timeIntervalSince1970: 1)
+        var second = first; second.id = "2"; second.assetID = "2"; second.state = .completed
+        var automatic = first; automatic.id = "3"; automatic.origin = .automatic; automatic.batchID = "batch2"; automatic.created = Date(timeIntervalSince1970: 2)
+        let legacy = BackupJob(account: "a", assetID: "4", assetRevision: "1", settings: BackupSettings())
+        var hidden = first; hidden.id = "5"; hidden.removeFromActivity()
+        let jobs = [first, second, automatic, legacy, hidden]
+        let batches = ActivityGroup.groups(jobs, byBatch: true)
+        XCTAssertEqual(batches.count, 3)
+        XCTAssertEqual(batches.first { $0.jobs.contains { $0.id == first.id } }?.jobs.count, 2)
+        XCTAssertEqual(ActivityGroup.groups(jobs, byBatch: false).count, 3)
+        XCTAssertEqual(batches.flatMap(\.jobs).count, 4)
+        XCTAssertEqual(hidden.transferDisposition(activeAccount: "a"), .cancel)
+        XCTAssertFalse(hidden.unfinished)
+        second.removeFromActivity()
+        XCTAssertNil(second.activityHidden)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try JSONEncoder().encode(hidden).write(to: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let reopened = try JSONDecoder().decode(BackupJob.self, from: Data(contentsOf: root))
+        XCTAssertTrue(reopened.activityHidden == true)
+        XCTAssertEqual(reopened.state, .cancelled)
+    }
+    func testUploadResponseDataWithoutHeadersSurvivesHeaderCallbackAndRelaunch() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = UploadResponseStore(root: root)
+        try store.append(Data([8]), id: 7)
+        try store.prepare(7)
+        let relaunched = UploadResponseStore(root: root)
+        try relaunched.prepare(7)
+        try relaunched.append(Data([7]), id: 7)
+        try relaunched.validate(7)
+        XCTAssertEqual(try Data(contentsOf: store.url(7)), Data([8, 7]))
+        XCTAssertThrowsError(try store.validate(8)) { XCTAssertEqual(($0 as? HarborError)?.code, "UPLOAD_RESPONSE_MISSING") }
+        try store.prepare(8)
+        XCTAssertThrowsError(try store.validate(8)) { XCTAssertEqual(($0 as? HarborError)?.code, "UPLOAD_RESPONSE_EMPTY") }
+    }
+
+    func testOnlyProvenPrecommitResponseFailureClearsTheMatchingSubmission() {
+        var job = BackupJob(account: "test", assetID: "asset", assetRevision: "1", settings: BackupSettings())
+        var first = MediaResource(role: "original.photo", path: "", name: "")
+        first.submitted = true; first.responsePath = "response"
+        var second = MediaResource(role: "current.photo", path: "", name: "")
+        second.submitted = true; second.responsePath = "other-response"
+        job.resources = [first, second]
+        job.recordFailure("NETWORK_ERROR", stage: "commit_response", committingResourceID: first.id)
+        XCTAssertTrue(job.resources[0].submitted)
+        job.recordFailure("FILE_ACCESS", stage: "commit_response", committingResourceID: first.id)
+        XCTAssertTrue(job.resources[0].submitted, "Legacy ambiguous errors must still query the cloud first")
+        job.recordFailure("UPLOAD_RESPONSE_MISSING", stage: "commit_response", committingResourceID: first.id)
+        XCTAssertFalse(job.resources[0].submitted)
+        XCTAssertNil(job.resources[0].responsePath)
+        XCTAssertTrue(job.resources[1].submitted)
+        XCTAssertEqual(job.resources[1].responsePath, "other-response")
+    }
+
+    func testStoreSurvivesReopenAndKeepsAccountAndPolicySnapshots() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("jobs.sqlite")
+        let store = try BackupStore(url: url)
+        var settings = BackupSettings()
+        let job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: settings)
+        try await store.save(job, kind: "job", id: job.id)
+        settings.quality = .saver
+        let other = BackupJob(account: "b", assetID: "asset", assetRevision: "1", settings: settings)
+        try await store.save(other, kind: "job", id: other.id)
+        let reopened = try BackupStore(url: url)
+        let loaded = try await reopened.load(BackupJob.self, kind: "job")
+        XCTAssertEqual(loaded.count, 2)
+        XCTAssertEqual(loaded.first { $0.account == "a" }?.settings.quality, .original)
+        XCTAssertNotEqual(job.dedupKey, other.dedupKey)
+    }
+    func testDefaultSettingsAndVersionedMediaIdentity() {
+        var settings = BackupSettings()
+        XCTAssertEqual(settings.quality, .original)
+        XCTAssertEqual(settings.live, .applePair)
+        XCTAssertEqual(settings.edits, .both)
+        XCTAssertFalse(settings.automatic)
+        let media = settings.mediaPolicy
+        settings.wifiOnly = false
+        XCTAssertEqual(media, settings.mediaPolicy)
+        settings.live = .motion
+        XCTAssertNotEqual(media, settings.mediaPolicy)
+    }
+    func testNativeJPEGContainerHasMetadataAndExactVideoTail() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let still = directory.appendingPathComponent("source.jpg"), video = directory.appendingPathComponent("source.mov")
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 8, height: 8)) }
+        try XCTUnwrap(image.jpegData(compressionQuality: 1)).write(to: still)
+        let clip = Data("fake-video-for-container-test".utf8); try clip.write(to: video)
+        let output = try MotionPhoto.mux(still: still, video: video, timestamp: 1200000, directory: directory)
+        XCTAssertEqual(try Data(contentsOf: output).suffix(clip.count), clip)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
+        let metadata = try XCTUnwrap(CGImageSourceCopyMetadataAtIndex(source, 0, nil))
+        XCTAssertEqual(CGImageMetadataCopyStringValueWithPath(metadata, nil, "Camera:MotionPhoto" as CFString) as String?, "1")
+        XCTAssertEqual(CGImageMetadataCopyStringValueWithPath(metadata, nil, "Camera:MotionPhotoPresentationTimestampUs" as CFString) as String?, "1200000")
+        XCTAssertNotNil(CGImageMetadataCopyTagWithPath(metadata, nil, "Container:Directory" as CFString))
+        XCTAssertEqual(CGImageSourceGetCount(source), 1)
+    }
+    func testDigestIsStreamingAndChangesWithContent() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data("abc".utf8).write(to: file)
+        let digest = try ResourceExporter.hash(file)
+        XCTAssertEqual(digest.0, "a9993e364706816aba3e25717850c26c9cd0d89d")
+        XCTAssertEqual(digest.1, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        XCTAssertEqual(digest.2, 3)
+    }
+    func testResourceSizeRetainsValuesBeyondFourGiB() throws {
+        let resource = MediaResource(role: "video", path: "", name: "", size: 5 * 1024 * 1024 * 1024)
+        let decoded = try JSONDecoder().decode(MediaResource.self, from: JSONEncoder().encode(resource))
+        XCTAssertEqual(decoded.size, 5_368_709_120)
+    }
+    func testTenThousandAssetIndexBatchRoundTrip() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try BackupStore(url: directory.appendingPathComponent("index.sqlite"))
+        let values = (0..<10_000).map { index in
+            (String(index), AssetSnapshot(id: String(index), revision: "v1", mediaType: 1, accessible: true))
+        }
+        try await store.saveBatch(values, kind: "asset")
+        let read = try await store.load(AssetSnapshot.self, kind: "asset")
+        XCTAssertEqual(read.count, 10_000)
+        XCTAssertTrue(read.allSatisfy(\.accessible))
+    }
+    func testLateWriteCannotUndoPersistedPause() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try BackupStore(url: directory.appendingPathComponent("race.sqlite"))
+        var job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: BackupSettings())
+        job.state = .paused
+        try await store.save(job, kind: "job", id: job.id, revision: 10)
+        job.state = .transferring
+        try await store.save(job, kind: "job", id: job.id, revision: 9)
+        let values = try await store.load(BackupJob.self, kind: "job")
+        XCTAssertEqual(values.first?.state, .paused)
+    }
+    func testActualFileBeyondFourGiBHashesWithBoundedMemory() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        XCTAssertTrue(FileManager.default.createFile(atPath: file.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: file)
+        let length: UInt64 = 4 * 1024 * 1024 * 1024 + 17
+        try handle.truncate(atOffset: length) // Sparse fixture: no multi-GB repo or artifact.
+        try handle.seek(toOffset: length - 1); try handle.write(contentsOf: Data([1])); try handle.close()
+        var before = rusage(); getrusage(RUSAGE_SELF, &before)
+        let digest = try ResourceExporter.hash(file)
+        var after = rusage(); getrusage(RUSAGE_SELF, &after)
+        XCTAssertEqual(digest.2, Int64(length))
+        XCTAssertEqual(digest.0.count, 40); XCTAssertEqual(digest.1.count, 64)
+        XCTAssertLessThan(after.ru_maxrss - before.ru_maxrss, 256 * 1024 * 1024)
+    }
+    func testHEICContainerRetainsImageAndUsesMpvdHeader() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let still = directory.appendingPathComponent("source.heic"), video = directory.appendingPathComponent("source.mov")
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).image { context in UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 0, width: 64, height: 64)) }
+        guard let destination = CGImageDestinationCreateWithURL(still as CFURL, UTType.heic.identifier as CFString, 1, nil) else { throw XCTSkip("HEIC encoder unavailable in this simulator") }
+        CGImageDestinationAddImage(destination, try XCTUnwrap(image.cgImage), nil)
+        guard CGImageDestinationFinalize(destination) else { throw XCTSkip("HEIC encoding unsupported in this simulator") }
+        let clip = Data("video-tail".utf8); try clip.write(to: video)
+        let output = try MotionPhoto.mux(still: still, video: video, timestamp: 0, directory: directory)
+        let data = try Data(contentsOf: output)
+        XCTAssertEqual(data.suffix(clip.count), clip)
+        XCTAssertEqual(String(decoding: data.dropLast(clip.count).suffix(4), as: UTF8.self), "mpvd")
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
+        XCTAssertNotNil(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let metadata = try XCTUnwrap(CGImageSourceCopyMetadataAtIndex(source, 0, nil))
+        XCTAssertEqual(CGImageMetadataCopyStringValueWithPath(metadata, nil, "Camera:MotionPhoto" as CFString) as String?, "1")
+    }
+    func testKeyframeIsReadFromRealQuickTimeTimedMetadata() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let video = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 64, AVVideoHeightKey: 64])
+        let pixels = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: 64, kCVPixelBufferHeightKey as String: 64])
+        writer.add(video)
+        let identifier = "mdta/com.apple.quicktime.still-image-time"
+        var format: CMFormatDescription?
+        let specification: [String: Any] = [kCMMetadataFormatDescriptionMetadataSpecificationKey_Identifier as String: identifier,
+            kCMMetadataFormatDescriptionMetadataSpecificationKey_DataType as String: kCMMetadataBaseDataType_SInt8]
+        XCTAssertEqual(CMMetadataFormatDescriptionCreateWithMetadataSpecifications(allocator: kCFAllocatorDefault, metadataType: kCMMetadataFormatType_Boxed, metadataSpecifications: [specification] as CFArray, formatDescriptionOut: &format), noErr)
+        let metadata = AVAssetWriterInput(mediaType: .metadata, outputSettings: nil, sourceFormatHint: format)
+        let adaptor = AVAssetWriterInputMetadataAdaptor(assetWriterInput: metadata)
+        writer.add(metadata)
+        XCTAssertTrue(writer.startWriting()); writer.startSession(atSourceTime: .zero)
+        let item = AVMutableMetadataItem(); item.identifier = AVMetadataIdentifier(rawValue: identifier)
+        item.value = NSNumber(value: Int8(0)); item.dataType = kCMMetadataBaseDataType_SInt8 as String
+        XCTAssertTrue(adaptor.append(AVTimedMetadataGroup(items: [item], timeRange: CMTimeRange(start: CMTime(value: 6, timescale: 24), duration: CMTime(value: 1, timescale: 24)))))
+        metadata.markAsFinished()
+        var buffer: CVPixelBuffer?
+        XCTAssertEqual(CVPixelBufferCreate(kCFAllocatorDefault, 64, 64, kCVPixelFormatType_32BGRA, nil, &buffer), kCVReturnSuccess)
+        let pixel = try XCTUnwrap(buffer)
+        CVPixelBufferLockBaseAddress(pixel, [])
+        if let pointer = CVPixelBufferGetBaseAddress(pixel) { memset(pointer, 0, CVPixelBufferGetDataSize(pixel)) }
+        CVPixelBufferUnlockBaseAddress(pixel, [])
+        let deadline = Date(timeIntervalSinceNow: 20)
+        for index in 0..<24 {
+            while !video.isReadyForMoreMediaData && Date() < deadline { try await Task.sleep(for: .milliseconds(2)) }
+            XCTAssertTrue(video.isReadyForMoreMediaData)
+            XCTAssertTrue(pixels.append(pixel, withPresentationTime: CMTime(value: Int64(index), timescale: 24)))
+        }
+        video.markAsFinished(); await writer.finishWriting()
+        XCTAssertEqual(writer.status, .completed)
+        let timestamp = try await MotionPhoto.presentationTime(url)
+        XCTAssertEqual(timestamp, 250000)
+    }
+    func testRelaunchCannotResumeOtherAccountsOrManuallyPausedTransfers() {
+        var job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: BackupSettings())
+        job.state = .transferring
+        XCTAssertEqual(job.transferDisposition(activeAccount: "a"), .run)
+        XCTAssertEqual(job.transferDisposition(activeAccount: "b"), .pause)
+        XCTAssertEqual(job.transferDisposition(activeAccount: ""), .pause)
+        job.state = .paused
+        XCTAssertEqual(job.transferDisposition(activeAccount: "a"), .pause)
+        job.state = .cancelled
+        XCTAssertEqual(job.transferDisposition(activeAccount: "a"), .cancel)
+    }
+
+}

@@ -1,0 +1,24 @@
+# Enforce LF so files built/executed on the macOS runner never carry CRLF
+# (important when committing from Windows).
+* text=auto eol=lf
+
+*.swift text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sh    text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+VERSION text eol=lf
+
+# Treat the placeholder icon as binary.
+*.png binary
+
+# Pin copied upstream bytes exactly; source-manifest.json hashes raw files.
+Vendor/** -text
+
+Vendor/gpmc/** text eol=lf
+
+tools/sync_gpmc.py text eol=lf
+gpmc.lock.json text eol=lf
+
+Vendor/source-manifest.json text eol=lf

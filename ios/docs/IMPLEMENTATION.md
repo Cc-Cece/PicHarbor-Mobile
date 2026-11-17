@@ -1,0 +1,76 @@
+> 0.2.12: [Google Photos direct handoff](GOOGLE-PHOTOS-DIRECT-0212.md) supersedes the temporary link-review UI. Verified Universal Link; alternative instructions collapsed by default. Build and regression status is recorded in that document.
+
+# 完整应用实施与验收台账
+
+基线：2026-10-19 用户批准完整实施计划。旧 A/B 验收记录继续有效，但不扩展为新功能已通过真机测试。
+
+0.2 开发版的 IPA、自动检查链接和剩余验收清单见 `DEVELOPMENT-ACCEPTANCE.md`。当前是阶段交付，不代表六阶段全部完成。
+
+**最新范围修订（2026-10-19，0.2.11）：** 用户授权取消自建本机清理并交由 Google 相册官方客户端。以下历史清理实现、五分钟证据及删除验收要求退出当前交付范围；保留备份确认，新增官方指引与临时链接测试。详细边界及真机步骤见 [0.2.11 说明](GOOGLE-PHOTOS-HANDOFF-0211.md)。
+
+## 已确认规则
+
+- 独立原生 iPhone 应用，iOS 17+；SwiftUI、原生任务与媒体处理、内嵌 Python/gpmc 协议适配。
+- 只做备份与官方清理指引，不开发恢复界面，不自建本机清理；官方 Google Photos 客户端负责取回与释放空间。
+- 默认 original（不计配额原画质）、原始照片配对（联合提交）、原始与编辑后均保留、仅 Wi-Fi；首次确认范围后启用自动备份。已有账号设置和历史任务保留原样；原 Motion Photo 默认值仅属于历史版本。
+- 两个版本内容不同分别显示，完全相同去重；Live Photo 不能混用版本。切换策略只影响新任务，旧内容手动重新备份，不删除旧云端项目。
+- 可选单向相簿同步默认关闭。媒体与相簿步骤分别持久化，不因相簿失败重新传媒体。
+- 本机释放空间交由 Google 相册官方功能：不设清理检查、不设默认勾选、不设五分钟证据、不设风险许可、不执行删除。备份确认后只展示官方清理指引；逐项指引以共享核心 `decide_cleanup` 的逐项云端确认证据为准，无证据时只做页级指引。
+- 0.2.10 及更早版本的清理列表、默认勾选与风险许可已随 2026-10-19 修订退出交付范围；历史实现见 [本轮说明](CLEANUP-REVIEW-0210.md)，仅作记录。
+- 未完成完整验证的 Live Photo 默认保留原件；释放空间一律经 Google 相册官方功能。0.2.8 的缩略图、文案与入口实现边界见 [说明](PHOTO-EXPERIENCE-028.md)，其中清理许可章节已被 2026-10-19 修订取代；设备结果以交付台账为准。
+- 原型只在本机维护。GitHub Actions 原生构建继续使用 Cc-Cece/PicHarbor-iOS，Sideloadly 自签。
+
+> 2026-11-13 统一重构注：本节及下文阶段 5、“尚未证明”与“清理测试”中旧清理口径已按 2026-10-19 修订批量改写。
+
+## 架构约束
+
+Swift `BackupStore` actor 是 backup-v2.sqlite 唯一写入者。Python observations.sqlite 仅承载兼容历史观察记录，不写新任务。Keychain 按账号存储凭据，数据库不存可复用认证或上传签名 URL。
+
+桥接 v2 使用 protocol_version、request_id 与结构化 failure。prepare_upload 返回内存传输计划，后台 URLSession 负责文件上传；响应落入受保护 Staging 文件，原生持久化后再调用 commit_resource、confirm_resource。传输凭据由系统 URLSession 管理，不放入业务数据库或诊断。
+
+任务保留画质、Live Photo、编辑版本等内容设置快照；网络是账号调度偏好，修改后应用于已有未完成任务，暂停保持暂停，系统文件传输按需重建。状态覆盖排队、准备、传输、提交、确认、完成、暂停、等待、失败、需处理、取消。提交不明先查远端，启动协调系统任务和磁盘回执，不清空仍在使用的文件。
+
+gpmc Vendor 文件保持固定快照。本轮适配在 Python/harbor_protocol.py 和原生代码，不覆盖 Android、MotionPhoto2 或上游文件。
+
+## 实施阶段
+
+1. 基线与两种 Live Photo 协议/封装验证。
+2. 原生持久化、账号迁移、后台传输和恢复。
+3. PhotoKit 图库、资源版本、增量发现、备份和相簿。
+4. 认可 UI 的完整原生实现与异常状态。
+5. 严格核验、备份确认与官方清理指引。
+6. 大图库、大文件、后台和升级验收；最终打包交付。
+
+## 尚未证明，不能标为完成
+
+Live Photo 的具体协议线索和逐项验收表见 `LIVE-PHOTO-VALIDATION.md`。
+
+- 0.2.4 已按公开实现接入联合提交与先原图后关联视频，声明 apple_pair=true、apple_pair_experimental=true；仍需本应用真机验证动态关联、同机显示、官方取回和配额，Live 清理继续关闭。
+- Motion Photo 已获得一个 HEIC 样本的官方客户端动态往返反馈，任务最终确认仍待复测；声音、关键帧、HDR、编辑版本及苹果原始资源配对未完成整体验收。
+- Live Photo 清理资格：没有完整配对/取回证据前，一律保留原件；释放空间一律经 Google 相册官方功能。
+- 真机后台、权限变化、iCloud、安装升级及规模测试，需安装新 IPA 后逐项记录。
+- 0.2.4 将自动发现改为账号＋资产＋版本身份，画质和测试方式变化不会自动重建历史图库；手动备份及显式重新备份仍使用含 mediaPolicy 的身份，新增专项原生回归。
+- 旧云端网页撤销仍未证实完成，与本轮原生构建无关。
+
+## 真机样本与步骤
+
+使用可删除的专用测试相簿，包含 JPEG、HEIC、视频（H.264/HEVC）、普通 Live、带声音 Live、重新选择关键帧、裁剪/旋转/调色视频和照片、HDR Live、iCloud-only 原件，以及原始与当前版本相同的项目。
+
+每种 Live 方式分别记录：iPhone/iOS、Google Photos 版本、上传画质、资产版本、云端是否单个动态项目、声音/关键帧/方向/时间/HDR、通过官方客户端保存回相册后是否仍为 Live。未完成的格子写“待验收”，不能只以 hash 查询成功替代。
+
+后台测试：传输中锁屏/切后台、断网恢复、系统终止后重开、设备重启、授权过期、磁盘不足；确认不丢任务、不错误完成、不重复提交。规模基线为万级图库与超过 4 GiB 视频；64 位长度单元测试不等于真实大文件验收。
+
+清理指引验收：备份确认后，指引页可达 Google 相册官方“释放空间”（Universal Link直达、应用内打开、App Store 三路回退均不静默失败）；PicHarbor 自身不扫描、不选择、不删除本机资产。官方释放空间的实际识别与移除结果由用户在 Google 相册内操作记录，不由 PicHarbor 自动读取或宣告。
+
+## 上游更新流程
+
+记录候选提交 → 与固定快照及 Android 差异对照 → 更新来源哈希 → 运行离线协议测试、原生测试 → 三画质和重复/失败场景真机回归 → 才更新内置版本。不得在客户端运行时自动下载或替换可执行 Python 代码。
+
+## 技术参考
+
+- https://developer.android.com/media/platform/motion-photo-format
+- https://developer.apple.com/documentation/foundation/downloading-files-in-the-background
+- https://developer.apple.com/videos/play/wwdc2022/10132/
+- https://github.com/xob0t/gpmc
+
+MotionPhoto2 本地来源与移植限制见 MOTIONPHOTO2-REFERENCE.md。本轮未复制其代码，不依赖桌面 ExifTool。
