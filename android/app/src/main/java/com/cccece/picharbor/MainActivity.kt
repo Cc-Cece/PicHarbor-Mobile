@@ -42,6 +42,7 @@ class MainActivity:ComponentActivity() {
         if(result.resultCode==Activity.RESULT_OK)result.data?.getStringExtra("oauth_token")?.let{token->model.afterAction{model.login(token)}}
         else if(result.resultCode==Activity.RESULT_FIRST_USER)model.say("Google 暂未接受此登录环境，请稍后重试")
     }
+    private val proxyFile=registerForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)model.afterAction{model.importProxyFile(uri)}}
     private val picker=registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->if(uris.isNotEmpty())model.afterAction{model.importFiles(uris)}}
     private val tree=registerForActivityResult(ActivityResultContracts.OpenDocumentTree()){uri->if(uri!=null)model.afterAction{model.addTree(uri)}}
     private val report=registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")){uri ->
@@ -59,10 +60,12 @@ class MainActivity:ComponentActivity() {
     }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        model.restoreNavigation(savedInstanceState?.getString("mobile_navigation"))
         enableEdgeToEdge()
+        model.proxyFilePicker={proxyFile.launch(arrayOf("*/*"))}
         model.scanner={image->if(image)qrImage.launch("image/*") else qrCamera.launch(com.journeyapps.barcodescanner.ScanOptions().setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE).setPrompt("扫描二维码").setBeepEnabled(false))}
         if(savedInstanceState!=null)reportRange=LogRange(savedInstanceState.getLong("log_start",Long.MIN_VALUE),savedInstanceState.getLong("log_end",Long.MAX_VALUE),savedInstanceState.getString("log_zone")?:java.time.ZoneId.systemDefault().id)
-        if(intent.getBooleanExtra("open_history",false))model.navigate("history")
+        if(intent.getBooleanExtra("open_history",false))model.tab("activity")
         lifecycleScope.launch {
             model.graph.preferences.integer("bootSession",bootCount(this@MainActivity));model.graph.scheduler.configure();model.graph.scheduler.restorePending()
         }
@@ -91,10 +94,11 @@ class MainActivity:ComponentActivity() {
     override fun onStop(){model.graph.visible.set(false);model.graph.computer.stop();super.onStop()}
     override fun onNewIntent(intent:Intent){
         super.onNewIntent(intent);setIntent(intent)
-        if(intent.getBooleanExtra("open_history",false))model.navigate("history")
+        if(intent.getBooleanExtra("open_history",false))model.tab("activity")
     }
     override fun onResume(){super.onResume();model.permissionsChanged()}
     override fun onSaveInstanceState(outState:Bundle) {
+        outState.putString("mobile_navigation",model.navigationSnapshot())
         outState.putLong("log_start",reportRange.start);outState.putLong("log_end",reportRange.end);outState.putString("log_zone",reportRange.zone)
         super.onSaveInstanceState(outState)
     }

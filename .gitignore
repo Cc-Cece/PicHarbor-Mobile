@@ -1,0 +1,7 @@
+delivery/
+.migration-cache/
+**/local.properties
+*.jks
+*.keystore
+*.dpapi
+__pycache__/

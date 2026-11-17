@@ -70,6 +70,7 @@ class ProxyManager(private val graph:AppGraph) {
             val identifier=id?:UUID.randomUUID().toString()
             val old=(0 until list.length()).firstOrNull{list.getJSONObject(it).getString("id")==identifier}
             val profile=JSONObject().put("id",identifier).put("name",name.ifBlank{"代理配置"}).put("url",url).put("nodes",nodes).put("updated",System.currentTimeMillis())
+            if(old==null&&list.length()>=20)throw EngineFailure("PROXY_CONFIG_UNSUPPORTED")
             if(old==null)list.put(profile) else list.put(old,profile)
             data.put("active",identifier);save(data);stopLocked();health.value=emptyMap()
         }

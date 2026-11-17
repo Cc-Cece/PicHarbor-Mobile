@@ -93,33 +93,33 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
     LaunchedEffect(data.activeJob,data.transfer.item,data.transfer.phase) {
         if(data.activeJob.isNotEmpty())Diagnostics.event("ui.snapshot",DiagnosticContext(job=data.activeJob,item=data.transfer.item),org.json.JSONObject().put("phase",data.transfer.phase).put("source_read_bytes",data.transfer.bytes))
     }
-    val hasStatus=topBackupJob(data)!=null
+    val hasStatus=false
     val snackbar=remember{SnackbarHostState()}
     val pageState=rememberSaveableStateHolder()
     val messageText=localize(vm.message)
     val noticeText=localize(notice)
     LaunchedEffect(messageText){if(messageText.isNotBlank()){snackbar.showSnackbar(messageText);vm.clearMessage()}}
     LaunchedEffect(noticeText){if(noticeText.isNotBlank())snackbar.showSnackbar(noticeText)}
-    BackHandler(vm.page!="photos"||vm.sheet.isNotEmpty()||vm.selectionMode){vm.back()}
+    BackHandler(vm.canGoBack){vm.back()}
     PicHarborTheme(settings) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
           Column(Modifier.fillMaxSize()) {
-            HarborTopStatus(vm,data,transfers)
+
             val rootPages=remember{setOf("photos","backup","activity","settings")}
-            var lastRoot by remember{mutableStateOf("photos")}
-            SideEffect {if(vm.page in rootPages)lastRoot=vm.page}
+            val lastRoot=vm.selectedTab.route
+
             val density=LocalDensity.current
             var measuredBar by remember{mutableIntStateOf(0)}
             val barHeight=if(measuredBar>0)with(density){measuredBar.toDp()} else 80.dp+WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             Box(Modifier.weight(1f).fillMaxWidth().consumeWindowInsets(if(hasStatus)WindowInsets.statusBars else WindowInsets(0,0,0,0))) {
-                AnimatedContent(targetState=vm.page,modifier=Modifier.fillMaxSize(),transitionSpec={
-                    val tabs=initialState in rootPages&&targetState in rootPages
+                AnimatedContent(targetState=vm.selectedTab to vm.page,modifier=Modifier.fillMaxSize(),transitionSpec={
+                    val tabs=initialState.first!=targetState.first
                     val enter=fadeIn(tween(260,easing=FastOutSlowInEasing))+
                         slideInHorizontally(tween(320,easing=FastOutSlowInEasing)){if(tabs)0 else it/32*(if(vm.navigationForward)1 else -1)}
                     (enter togetherWith fadeOut(tween(180,easing=FastOutSlowInEasing))).using(null)
-                },label="content-transition") { page ->
-                    pageState.SaveableStateProvider(page) {
-                        val padding=if(page in rootPages)Modifier.padding(bottom=barHeight).windowInsetsPadding(if(hasStatus)WindowInsets(0,0,0,0) else WindowInsets.statusBars) else Modifier.navigationBarsPadding()
+                },label="content-transition") { (currentTab,page) ->
+                    pageState.SaveableStateProvider(currentTab.route+":"+page) {
+                        val padding=if(page !in setOf("detail","information"))Modifier.padding(bottom=barHeight).windowInsetsPadding(if(hasStatus)WindowInsets(0,0,0,0) else WindowInsets.statusBars) else Modifier.navigationBarsPadding().statusBarsPadding()
                         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(padding)) {
                             when(page) {
                                 "photos"->PhotosScreen(vm,data,onPermissions,onPickFiles)
@@ -132,14 +132,21 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
                                 "archive-settings"->ArchiveSettingsScreen(vm,data)
                                 "interface"->InterfaceScreen(vm,data)
                                 "proxy"->ProxyScreen(vm,data)
+                                "proxy-profiles"->ProxyProfilesScreen(vm,data)
+                                "proxy-editor"->ProxyEditorScreen(vm,data)
+                                "proxy-profile"->ProxyProfileScreen(vm,data)
+                                "accounts"->AccountsScreen(vm,data,onLogin)
+                                "connection"->ConnectionScreen(vm,data,onLogin)
+                                "permissions"->PermissionsScreen(vm,data,onPermissions,onPickTree)
+                                "background-settings"->BackgroundSettingsScreen(vm,data)
+                                "about"->AboutScreen(vm,data)
+                                "information"->MediaInformationScreen(vm,data)
                                 "live-link"->LiveLinkScreen(vm,data)
                                 "task-proxy"->TaskProxyScreen(vm,data)
                                 "task-detail"->TaskDetailScreen(vm,data)
-                                "diagnostics"->AdvancedScreen(vm,data,onExport)
+                                "diagnostics"->DiagnosticsScreen(vm,data,onExport)
                                 "folders"->FoldersScreen(vm,data,onPermissions,onPickTree)
                                 "network"->NetworkScreen(vm,data)
-                                "advanced"->AdvancedScreen(vm,data,onExport)
-                                "history"->ActivityScreen(vm,data)
                                 "archives"->ActivityScreen(vm,data,archived=true)
                                 "free-space"->FreeSpaceScreen(vm,data)
                                 "detail"->DetailScreen(vm,data)
@@ -152,7 +159,7 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
                     }
                 }
                 // This single navigation bar stays mounted for all four root tabs.
-                androidx.compose.animation.AnimatedVisibility(visible=vm.page in rootPages,modifier=Modifier.align(Alignment.BottomCenter),enter=fadeIn(tween(220)),exit=fadeOut(tween(180))) {
+                androidx.compose.animation.AnimatedVisibility(visible=vm.page !in setOf("detail","information"),modifier=Modifier.align(Alignment.BottomCenter),enter=fadeIn(tween(220)),exit=fadeOut(tween(180))) {
                     NavigationBar(modifier=Modifier.onSizeChanged{measuredBar=it.height},containerColor=MaterialTheme.colorScheme.surfaceContainerLow) {
                         listOf(Triple("photos",Icons.Outlined.PhotoLibrary,"\u7167\u7247"),Triple("backup",Icons.Outlined.Cloud,"\u5907\u4efd"),Triple("activity",Icons.Outlined.History,"活动"),Triple("settings",Icons.Outlined.Settings,"设置")).forEach{(route,icon,label)->
                             NavigationBarItem(selected=(if(vm.page in rootPages)vm.page else lastRoot)==route,onClick={if(vm.page!=route)vm.tab(route)},icon={LIcon(icon,label)},label={LText(label)})
@@ -164,7 +171,7 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
             SnackbarHost(snackbar,Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom=if(vm.page in setOf("photos","backup","activity","settings"))80.dp else 0.dp))
         }
         HarborSheets(vm,data,onLogin,onPickTree)
-        incoming?.let{offer->AlertDialog(onDismissRequest=vm.graph.computer::rejectIncoming,title={LText("传到这台电脑")},
+        incoming?.let{offer->AlertDialog(onDismissRequest=vm.graph.computer::rejectIncoming,title={LText("传输到电脑")},
             text={LText("电脑 ${offer.host} 请求备份范围内 ${offer.count} 项，是否确认发送？")},
             confirmButton={TextButton(onClick=vm.graph.computer::confirmIncoming){LText("确认发送")}},
             dismissButton={TextButton(onClick=vm.graph.computer::rejectIncoming){LText("拒绝")}})}
@@ -173,9 +180,11 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
 
 @Composable
 fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,action:@Composable RowScope.()->Unit={}) {
-    if(root)Row(Modifier.fillMaxWidth().padding(start=24.dp,end=16.dp,top=18.dp,bottom=16.dp),verticalAlignment=Alignment.CenterVertically) {
-        LText(title,style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.onBackground,modifier=Modifier.weight(1f));action()
-    } else TopAppBar(title={LText(title)},navigationIcon={IconButton(onClick=vm::back){LIcon(Icons.Outlined.ArrowBack,"返回")}},actions=action)
+    if(root)Column(Modifier.fillMaxWidth().padding(start=20.dp,end=16.dp,bottom=12.dp)) {
+        Row(Modifier.fillMaxWidth().heightIn(min=36.dp),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically,content=action)
+        LText(title,style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.onBackground,modifier=Modifier.padding(top=6.dp))
+    } else TopAppBar(title={LText(title)},navigationIcon={IconButton(onClick=vm::back){LIcon(Icons.Outlined.ArrowBack,"返回")}},actions=action,windowInsets=WindowInsets(0,0,0,0))
+
 }
 @Composable
 fun SettingsRow(title:String,subtitle:String="",icon:ImageVector?=null,enabled:Boolean=true,onClick:()->Unit,trailing:@Composable (()->Unit)?=null) {
@@ -224,81 +233,6 @@ fun backupHeading(vm:HarborViewModel,data:HarborUiData):Pair<String,String> = wh
 }
 
 @Composable
-fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onPickFiles:()->Unit) {
-    val locale=androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
-    val status=backupHeading(vm,data)
-    val list=remember(data.media,data.backups,data.items,vm.filter,vm.type,vm.fromDate,vm.toDate,vm.libraryAlbum,data.settings.account){data.logicalMedia.filter { m ->
-        val s=data.status(m)
-        (vm.filter=="all"||(vm.filter=="uploaded"&&s=="uploaded")||(vm.filter=="pending"&&s in setOf("pending","unknown"))||(vm.filter=="error"&&s=="error")) &&
-            (vm.type=="all"||(vm.type=="video"&&m.video)||(vm.type=="photo"&&!m.video)||(vm.type=="live"&&!m.video&&m.pairingID.isNotEmpty())) && m.captured>=vm.fromDate && m.captured<=vm.toDate && (vm.libraryAlbum.isEmpty()||vm.libraryAlbum in LivePhotoPairing.folders(m,data.media))
-    }}
-    val groups=remember(list){list.groupBy{Instant.ofEpochMilli(it.captured).atZone(ZoneId.systemDefault()).toLocalDate()}}
-    Box(Modifier.fillMaxSize()) {
-        LazyVerticalGrid(columns=GridCells.Adaptive(112.dp),horizontalArrangement=Arrangement.spacedBy(3.dp),verticalArrangement=Arrangement.spacedBy(3.dp),contentPadding=PaddingValues(bottom=if(vm.selectionMode)100.dp else 20.dp)) {
-            item(span={GridItemSpan(maxLineSpan)}){PageTitle(if(vm.selectionMode)"已选择 ${vm.selected.size} 项" else "照片",vm,true){
-                if(vm.selectionMode)TextButton(onClick=vm::clearSelection){LText("完成")}
-                else {IconButton(onClick=onPickFiles){LIcon(Icons.Outlined.AddPhotoAlternate,"手动选择文件")};Avatar(data.settings.account){vm.sheet="account"}}
-            }}
-            item(span={GridItemSpan(maxLineSpan)}){Surface(onClick={vm.tab("backup")},color=MaterialTheme.colorScheme.primaryContainer,shape=RoundedCornerShape(25.dp),modifier=Modifier.padding(horizontal=20.dp,vertical=8.dp)) {
-                Row(Modifier.padding(17.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-                    LIcon(if(data.pending.isEmpty())Icons.Outlined.CloudDone else Icons.Outlined.CloudUpload,null,tint=MaterialTheme.colorScheme.primary)
-                    Column(Modifier.weight(1f)){LText(status.first,style=MaterialTheme.typography.titleSmall);LText(status.second,style=MaterialTheme.typography.bodySmall,maxLines=1,overflow=TextOverflow.Ellipsis)}
-                    LIcon(Icons.Outlined.ChevronRight,null)
-                }
-            }}
-            item(span={GridItemSpan(maxLineSpan)}){Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=20.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                listOf("all" to "全部","pending" to "待备份","uploaded" to "已备份","error" to "需要处理").forEach{(key,label)->FilterChip(vm.filter==key,{vm.filter=key;vm.clearSelection()},{LText(label)})}
-                IconButton(onClick={vm.sheet="filter"}){LIcon(Icons.Outlined.Tune,"筛选照片")}
-            }}
-            item(span={GridItemSpan(maxLineSpan)}){
-                var albums by remember{mutableStateOf(false)}
-                Box(Modifier.padding(horizontal=16.dp)) {
-                    TextButton(onClick={albums=true}){LText(data.media.firstOrNull{it.folderKey==vm.libraryAlbum}?.folderName?:"全部可访问项目")}
-                    DropdownMenu(albums,{albums=false}) {
-                        DropdownMenuItem(text={LText("全部可访问项目")},onClick={vm.libraryAlbum="";albums=false})
-                        data.media.distinctBy{it.folderKey}.forEach{album->DropdownMenuItem(text={LText(album.folderName)},onClick={vm.libraryAlbum=album.folderKey;albums=false})}
-                    }
-                }
-            }
-            if(!vm.graph.media.fullAccess())item(span={GridItemSpan(maxLineSpan)}){SettingsRow(if(vm.graph.media.hasAccess())"仅显示已授权的照片" else "允许访问手机照片", "授权后可以查看和备份照片，也可手动选择文件",Icons.Outlined.PhotoLibrary,onClick=onPermissions)}
-            if(list.isEmpty())item(span={GridItemSpan(maxLineSpan)}){EmptyState(if(vm.filter=="pending")"这里暂时没有待处理项目" else "这里还没有照片","你可以检查访问权限、切换筛选条件，或手动选择照片。",Icons.Outlined.PhotoLibrary){OutlinedButton(onClick=onPickFiles){LText("手动选择照片和视频")}}}
-            groups.forEach{(date,photos)->
-                item(span={GridItemSpan(maxLineSpan)}){Row(Modifier.fillMaxWidth().padding(start=20.dp,end=10.dp,top=14.dp,bottom=5.dp),verticalAlignment=Alignment.CenterVertically){
-                    LText(date.format(DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM).withLocale(locale)),style=MaterialTheme.typography.labelLarge,modifier=Modifier.weight(1f))
-                    TextButton(onClick={vm.selectAll(photos.map{it.id})}){LText("选择")}
-                }}
-                items(photos,key={it.id}) { media ->
-                    val selected=media.id in vm.selected;val phase=data.status(media)
-                    val inset by animateDpAsState(if(selected)9.dp else 0.dp,spring(dampingRatio=1f,stiffness=500f),label="photo-selection-inset")
-                    val corner by animateDpAsState(if(selected)15.dp else 3.dp,tween(HarborMotion.MEDIUM),label="photo-selection-shape")
-                    Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.primaryContainer)
-                        .combinedClickable(onClick={vm.open(media)},onLongClick={vm.select(media.id)})) {
-                        AsyncImage(ImageRequest.Builder(LocalContext.current).data(Uri.parse(media.id)).size(360).memoryCacheKey("${media.id}:${media.modified}:${media.size}").build(),media.name,
-                            modifier=Modifier.fillMaxSize().padding(inset.coerceIn(0.dp,9.dp)).clip(RoundedCornerShape(corner)),contentScale=ContentScale.Crop)
-                        AnimatedVisibility(selected,modifier=Modifier.padding(7.dp).align(Alignment.TopStart),enter=fadeIn()+scaleIn(initialScale=.7f),exit=fadeOut()+scaleOut(targetScale=.7f)) {
-                            Surface(color=MaterialTheme.colorScheme.primary,shape=CircleShape){LIcon(Icons.Outlined.Check,"已选择",Modifier.padding(3.dp).size(15.dp))}
-                        }
-                        Surface(color=if(phase=="uploaded")Color(0xFFEDF7EB) else MaterialTheme.colorScheme.surface.copy(alpha=.92f),shape=CircleShape,modifier=Modifier.padding(7.dp).align(Alignment.BottomEnd)) {
-                            LIcon(when(phase){"uploaded"->Icons.Outlined.CloudDone;"error"->Icons.Outlined.ErrorOutline;"uploading"->Icons.Outlined.Sync;else->Icons.Outlined.CloudUpload},
-                                when(phase){"uploaded"->"已备份";"error"->"需要处理";"uploading"->"备份中";"pending"->"待备份";else->"待确认"},modifier=Modifier.padding(4.dp).size(15.dp),tint=if(phase=="uploaded")Color(0xFF38664C) else MaterialTheme.colorScheme.primary)
-                        }
-                        if(media.video)LIcon(Icons.Outlined.PlayArrow,"视频",Modifier.align(Alignment.BottomStart).padding(7.dp).size(20.dp),tint=Color.White)
-                    }
-                }
-            }
-        }
-        AnimatedVisibility(vm.selectionMode,modifier=Modifier.align(Alignment.BottomCenter).padding(12.dp),
-            enter=fadeIn()+slideInVertically{it/2},exit=fadeOut()+slideOutVertically{it/2}) {
-          Surface(color=MaterialTheme.colorScheme.surfaceContainerHigh,shape=RoundedCornerShape(30.dp),shadowElevation=6.dp){
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(8.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-                Button(onClick={vm.start(vm.selected.toList())},enabled=vm.selected.isNotEmpty()&&!vm.busy){LIcon(Icons.Outlined.CloudUpload,null);Spacer(Modifier.width(7.dp));LText("备份所选")}
-            }
-          }
-        }
-    }
-}
-
-@Composable
 fun Avatar(account:String,onClick:()->Unit){Surface(onClick=onClick,color=MaterialTheme.colorScheme.tertiaryContainer,shape=CircleShape,modifier=Modifier.size(40.dp)){
     val accounts by (LocalContext.current.applicationContext as PicHarborApp).graph.credentials.accounts.collectAsState()
     val profile=accounts.firstOrNull{it.email==account}
@@ -309,54 +243,6 @@ fun Avatar(account:String,onClick:()->Unit){Surface(onClick=onClick,color=Materi
     }
 }}
 
-@Composable
-fun BackupScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
-    val status=backupHeading(vm,data);val job=data.latestJob;val done=data.doneCount
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        PageTitle("备份",vm,true){IconButton(onClick={vm.navigate("preferences")}){LIcon(Icons.Outlined.Settings,"备份设置")}}
-        EmptyState(status.first,status.second,when{data.activeJob.isNotEmpty()->Icons.Outlined.CloudUpload;data.pending.isEmpty()->Icons.Outlined.CloudDone;else->Icons.Outlined.CloudUpload}) {
-            when {
-                data.settings.account.isEmpty()||vm.loginRequired||job?.state=="auth_required"->Button(onClick={vm.sheet="account"},enabled=!vm.busy){LText("选择或添加账号")}
-                data.activeJob.isNotEmpty()->FilledTonalButton(onClick=vm::pause,enabled=job?.state!="pausing"&&!vm.busy){LIcon(Icons.Outlined.Pause,null);LText("暂停备份")}
-                job?.state=="paused"->Button(onClick={vm.resume(job.id)},enabled=!vm.busy){LIcon(Icons.Outlined.PlayArrow,null);LText("继续备份")}
-                job?.state=="needs_attention"->Button(onClick={vm.retry(job.id)},enabled=!vm.busy){LText("重试未完成项目")}
-                !data.settings.allFolders&&data.settings.folders.isEmpty()->Button(onClick={vm.navigate("folders")}){LText("选择备份文件夹")}
-                else->Button(onClick={vm.start()},enabled=!vm.busy&&vm.engineReady){LIcon(Icons.Outlined.CloudUpload,null);Spacer(Modifier.width(8.dp));LText(if(data.pending.isEmpty())"检查并备份" else "立即备份")}
-            }
-        }
-        Column(Modifier.padding(horizontal=20.dp)) {
-            val activity by vm.graph.pipeline.activity.collectAsState()
-            if(activity.values.any{it>0})LText("准备中 ${(activity["preparation"]?:0)+(activity["lookup"]?:0)} · 上传中 ${activity["upload"]?:0} · 确认中 ${(activity["commit"]?:0)+(activity["confirmation"]?:0)}",style=MaterialTheme.typography.bodySmall)
-            if(data.activeJob.isNotEmpty()) {
-                key(data.transfer.item) { HarborProgress(if(data.transfer.total>0)data.transfer.bytes.toFloat()/data.transfer.total else 0f,modifier=Modifier.fillMaxWidth().clip(CircleShape)) }
-                LText("${localize(phaseLabel(data.transfer.phase))} · ${formatSize(data.transfer.bytes)} / ${formatSize(data.transfer.total)} · ${formatSize(data.transfer.speed)}/s",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(vertical=10.dp))
-            }
-            val currentStats=data.statisticsMap[job?.id]
-            if(currentStats!=null) {
-                LText("本次共 ${currentStats.total} 项 · ${formatSize(currentStats.bytes)}",style=MaterialTheme.typography.bodyMedium)
-                LText("成功 ${currentStats.succeeded} · 跳过 ${currentStats.skipped} · 失败 ${currentStats.failed}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(bottom=14.dp))
-            }
-            Surface(color=MaterialTheme.colorScheme.surfaceContainerLow,shape=RoundedCornerShape(24.dp)) {
-                Row(Modifier.fillMaxWidth().padding(vertical=20.dp),horizontalArrangement=Arrangement.SpaceEvenly) {
-                    listOf(Triple(done,"已备份","uploaded"),Triple(data.pending.size,"待检查","pending"),Triple(data.attentionItems.size,"需要处理","attention")).forEach{(n,label,kind)->
-                        Column(Modifier.weight(1f).clickable{vm.showBackupList(kind)}.padding(vertical=8.dp),horizontalAlignment=Alignment.CenterHorizontally){LText("$n",style=MaterialTheme.typography.headlineSmall);LText(label,style=MaterialTheme.typography.bodySmall)}
-                    }
-                }
-            }
-            Spacer(Modifier.height(18.dp))
-            SettingGroup {
-                ToggleRow("自动备份",if(data.settings.auto)"有新增内容时自动检查" else "已关闭，仍可手动备份",data.settings.auto,Icons.Outlined.CloudUpload,!vm.busy){vm.setBoolean("auto",it)}
-                SettingsRow("备份文件夹",if(data.settings.allFolders)"所有文件夹 · 自动包含新文件夹" else "选择自动备份的范围",Icons.Outlined.Folder,onClick={vm.navigate("folders")})
-                SettingsRow("传到这台电脑","局域网配对与直接传输",Icons.Outlined.Computer,onClick={vm.navigate("live-link")})
-                SettingsRow("备份偏好","画质、动态照片与相簿同步",Icons.Outlined.Tune,onClick={vm.navigate("preferences")})
-                SettingsRow("释放手机空间","通过 Google 相册官方功能",Icons.Outlined.Storage,onClick={vm.navigate("free-space")})
-                SettingsRow("任务记录","查看已完成和未完成的备份",Icons.Outlined.History,onClick={vm.tab("activity")})
-            }
-            Helper("已备份状态只针对当前账号。新文件先核对云端内容，再决定是否上传。",Icons.Outlined.Security)
-            if(job!=null&&job.state in setOf("paused","waiting","needs_attention","auth_required"))TextButton(onClick={vm.sheet="end:${job.id}"}){LText("结束当前任务")}
-        }
-    }
-}
 fun phaseLabel(phase:String)=when(phase){
     "done"->"已上传";"exists"->"云端已有相同内容";"queued"->"等待处理"
     "paused"->"已暂停";"cancelled"->"已取消";"failed"->"可重试"
@@ -366,42 +252,4 @@ fun phaseLabel(phase:String)=when(phase){
     "hashing"->"检查本地文件";"checking","cloud_check"->"核对云端内容"
     "uploading"->"上传中";"finalizing"->"完成上传";"retrying"->"稍后重试"
     else->"正在准备"
-}
-
-@Composable
-fun ProfileScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
-    val backed=data.media.filter{data.backed(it)}
-    val accounts by vm.accounts.collectAsState()
-    val profile=accounts.firstOrNull{it.email==data.settings.account}
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        PageTitle("我的",vm,true){IconButton(onClick={vm.sheet="appearance"}){LIcon(Icons.Outlined.Palette,"外观")}}
-        Column(Modifier.padding(horizontal=20.dp)) {
-            Surface(onClick={vm.sheet="account"},shape=RoundedCornerShape(26.dp),color=MaterialTheme.colorScheme.surfaceContainerLow){
-                Row(Modifier.fillMaxWidth().padding(20.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)){
-                    Avatar(data.settings.account){vm.sheet="account"}
-                    Column(Modifier.weight(1f)){LText(profile?.displayName?.takeIf{it.isNotBlank()}?:data.settings.account.substringBefore('@').ifEmpty{"尚未登录"},style=MaterialTheme.typography.titleLarge);LText(data.settings.account.ifEmpty{"登录 Google，开始备份"},style=MaterialTheme.typography.bodySmall)}
-                    LIcon(Icons.Outlined.ChevronRight,null)
-                }
-            }
-            Spacer(Modifier.height(18.dp))
-            Surface(color=MaterialTheme.colorScheme.primaryContainer,shape=RoundedCornerShape(28.dp)){
-                Column(Modifier.fillMaxWidth().padding(24.dp)){
-                    LText("给手机腾点空间",style=MaterialTheme.typography.labelLarge)
-                    LText(formatSize(backed.sumOf{it.size}),style=MaterialTheme.typography.displaySmall,modifier=Modifier.padding(vertical=8.dp))
-                    LText("${backed.size} 个已备份项目",style=MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(15.dp));Button(onClick={vm.navigate("free-space")}){LIcon(Icons.Outlined.AutoAwesome,null);Spacer(Modifier.width(8.dp));LText("在 Google 相册释放空间")}
-                }
-            }
-            SectionLabel("偏好设置")
-            SettingGroup {
-                SettingsRow("备份设置","自动备份、画质和相册",Icons.Outlined.Cloud,onClick={vm.navigate("preferences")})
-                SettingsRow("网络与移动流量",if(data.settings.wifi)"仅使用 Wi-Fi" else "允许移动流量",Icons.Outlined.Wifi,onClick={vm.navigate("network")})
-                SettingsRow("外观","跟随系统或使用喜欢的配色",Icons.Outlined.Palette,onClick={vm.sheet="appearance"})
-                SettingsRow("高级设置","后台运行、重试和更多选项",Icons.Outlined.Settings,onClick={vm.navigate("advanced")})
-            }
-            SectionLabel("帮助")
-            SettingGroup{SettingsRow("备份遇到问题？","检查权限、网络与后台运行",Icons.Outlined.HelpOutline,onClick={vm.sheet="help"});SettingsRow("关于 PicHarbor","cc_cece · ${BuildConfig.VERSION_NAME}",Icons.Outlined.Info,onClick={vm.sheet="about"})}
-            Helper("为珍贵的日常，留一份安心。",Icons.Outlined.CloudDone)
-        }
-    }
 }

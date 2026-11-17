@@ -70,6 +70,10 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
         mode.startsWith("end:")->"结束当前任务？"
         else->"PicHarbor"
     }
+    if(mode=="account"||mode=="login") {
+        LaunchedEffect(mode){vm.sheet="";vm.navigate(if(mode=="login")"connection" else "accounts")}
+        return
+    }
     ModalBottomSheet(onDismissRequest={vm.sheet=""},sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
         Column(Modifier.fillMaxWidth().heightIn(max=640.dp).verticalScroll(rememberScrollState()).padding(start=24.dp,end=24.dp,bottom=32.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically){LText(title,style=MaterialTheme.typography.headlineSmall,modifier=Modifier.weight(1f));IconButton(onClick={vm.sheet=""}){LIcon(Icons.Outlined.Close,"关闭")}}

@@ -27,17 +27,16 @@ fun LiveLinkScreen(vm:HarborViewModel,data:HarborUiData) {
         }
     }
     DisposableEffect(Unit){onDispose{link.stopSending()}}
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        PageTitle("传到这台电脑",vm)
-        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            saved?.let{target->
-                LText("已保存的电脑",style=MaterialTheme.typography.titleMedium)
+    ProductPage("传输到电脑",vm) {
+            saved?.let{target->ProductSection("已保存的电脑") {
+
                 LText("${target.host}:${target.port}")
                 Row {
                     TextButton(onClick={host=target.host;port=target.port.toString();fingerprint=target.fingerprint;code=""},enabled=!progress.busy){LText("使用已保存的电脑")}
                     TextButton(onClick={link.forget();saved=null},enabled=!progress.busy){LText("忘记这台电脑")}
                 }
-            }
+            }}
+            ProductSection("连接电脑") {
             Row {
                 TextButton(onClick={vm.scanQr("computer",false)},enabled=!progress.busy){LText("扫描电脑二维码")}
                 TextButton(onClick={vm.scanQr("computer",true)},enabled=!progress.busy){LText("从图片识别")}
@@ -46,10 +45,17 @@ fun LiveLinkScreen(vm:HarborViewModel,data:HarborUiData) {
             OutlinedTextField(port,{port=it},label={LText("端口")},singleLine=true,enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
             OutlinedTextField(fingerprint,{fingerprint=it},label={LText("证书前 16 位或完整指纹")},singleLine=true,enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
             OutlinedTextField(code,{code=it},label={LText("配对码")},singleLine=true,enabled=!progress.busy,modifier=Modifier.fillMaxWidth())
-            LText("将发送当前照片范围，共 ${data.scope.size} 项，不需要 Google 账号。")
+            }
+            ProductSection("传输范围") {
+            ProductValue("将发送","${data.scope.size} 项")
+            SettingsRow("备份范围",onClick={vm.navigate("folders")})
             Helper("仅在同一局域网内直接传输。发送前需要电脑确认；请保持应用在前台，锁屏后发送停止。")
+            }
+            ProductSection {
             if(progress.busy){LinearProgressIndicator(progress={progress.fraction},modifier=Modifier.fillMaxWidth());Button(onClick=link::stopSending){LText("停止发送")}}
             else Button(onClick={runCatching{LinkWire.target(host,port,fingerprint,code)}.onSuccess(link::send).onFailure{vm.say("请检查地址、端口、证书指纹和配对码。")}},enabled=data.scope.isNotEmpty()){LText("开始发送")}
+            }
+            ProductSection("传输") {
             if(progress.status.isNotBlank())LText(progress.status)
             if(progress.sent+progress.existing+progress.failed>0)LText("已发送 ${progress.sent} · 电脑已有 ${progress.existing} · 失败 ${progress.failed}")
         }

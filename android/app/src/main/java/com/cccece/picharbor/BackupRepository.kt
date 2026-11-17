@@ -48,11 +48,11 @@ class BackupRepository(private val graph:AppGraph) {
                 graph.dao.putItem(item.copy(state=if(item.remoteKey.isBlank())"queued" else "album_pending",error=""))
                 graph.dao.putJob(job.copy(state="queued",manualPriority=true));graph.scheduler.launchManual(job.allowMobile)
             }
-            "remove"->{
+            "cancel","remove"->{
                 cancelledItems.add(id);suspendedItems.add(id)
                 task?.let{graph.harborCore.transition(it,"cancelled")}
                 graph.dao.suppress(SuppressedAsset(item.account,item.mediaId,item.modified))
-                graph.dao.putItem(item.copy(state="cancelled",hidden=true))
+                graph.dao.putItem(item.copy(state="cancelled",hidden=action=="remove"))
             }
         }
     }

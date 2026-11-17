@@ -33,13 +33,28 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
     val locale=androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
-    val selected=vm.activeMedia?:return
+    val selected=vm.activeMedia
+    if(selected==null) {
+        ProductPage("照片详情",vm){EmptyState("没有可显示的项目","调整筛选条件或相册访问权限。")}
+        return
+    }
     val media=data.media.firstOrNull{it.id==selected.id}?:selected
     val status=data.status(media)
     val pair=remember(media,data.media){if(media.video)null else LivePhotoPairing.findPair(media,data.media)}
     var playingLive by remember(media.id){mutableStateOf(false)}
+    var filename by remember{mutableStateOf(false)}
+    val context=LocalContext.current
+    val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        PageTitle("",vm)
+        PageTitle("照片详情",vm,action={
+            IconButton(onClick={vm.navigate("information")}){LIcon(Icons.Outlined.Info,"详情")}
+            IconButton(onClick={
+                val sources=arrayListOf(Uri.parse(media.id)).apply{if(pair!=null)add(Uri.parse(pair.id))}
+                val intent=if(sources.size>1)android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).setType("*/*").putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM,sources)
+                    else android.content.Intent(android.content.Intent.ACTION_SEND).setType(media.mime).putExtra(android.content.Intent.EXTRA_STREAM,sources.first())
+                context.openProductIntent(android.content.Intent.createChooser(intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),""))
+            }){LIcon(Icons.Outlined.Share,"分享")}
+        })
         if(media.video||playingLive)VideoPlayer(if(playingLive)pair?.id?:media.id else media.id,autoplay=playingLive) else {
             var scale by remember(media.id){mutableFloatStateOf(1f)}
             var x by remember(media.id){mutableFloatStateOf(0f)};var y by remember(media.id){mutableFloatStateOf(0f)}
@@ -50,27 +65,17 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
             }
         }
         Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(13.dp)) {
-            LText(media.name,localize=false,style=MaterialTheme.typography.titleLarge)
+            TextButton(onClick={filename=true}){LText(media.name,localize=false,style=MaterialTheme.typography.titleMedium,maxLines=1)}
+            LText(Instant.ofEpochMilli(media.captured).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM).withLocale(locale)),localize=false)
+            LText(formatSize(media.size+(pair?.size?:0))+" · "+if(pair!=null||media.pairingID==LivePhotoPairing.EMBEDDED_MOTION)"Live Photo" else if(media.video)localize("视频") else localize("照片"),localize=false,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(pair!=null||media.pairingID==LivePhotoPairing.EMBEDDED_MOTION)TextButton(onClick={playingLive=!playingLive}){LText(if(playingLive)"显示静态照片" else "播放实况")}
-            LText(Instant.ofEpochMilli(media.captured).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.SHORT).withLocale(locale)),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            AssistChip(onClick={vm.say(if(status=="uploaded")"已确认当前账号云端存在对应内容；释放空间请使用 Google 相册官方功能" else "备份时先核对云端内容，避免重复上传")},label={LText(when(status){"uploaded"->"已备份到当前账号";"error"->"需要处理";"uploading"->"正在备份";"pending"->"等待备份";else->"备份状态待确认"})},leadingIcon={LIcon(if(status=="uploaded")Icons.Outlined.CloudDone else Icons.Outlined.CloudUpload,null)})
-            DetailRow("所在文件夹",media.folderName,valueLocalized=false);DetailRow("文件大小",formatSize(media.size));DetailRow("类型",media.mime)
-            if(data.backupMap[media.id]!=null)DetailRow("备份时的画质设置",qualityName(data.backupMap.getValue(media.id).quality))
-            if(status=="uploaded")Helper("云端实际画质与存储空间占用，可在 Google 相册详情查看。")
-            if(status=="uploaded")Helper("已备份不等于可直接删除。释放空间请使用 Google 相册官方功能。",Icons.Outlined.Security)
-            Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                Button(onClick={vm.start(listOf(media.id))},enabled=!vm.busy,modifier=Modifier.weight(1f)){LText(if(status=="uploaded")"重新核对" else "立即备份")}
-                FilledTonalButton(onClick={vm.navigate("free-space")},enabled=status=="uploaded",modifier=Modifier.weight(1f)){LText("释放空间")}
-            }
-            val context=LocalContext.current
-            TextButton(onClick={
-                val intent=android.content.Intent(android.content.Intent.ACTION_SEND).setType(media.mime)
-                    .putExtra(android.content.Intent.EXTRA_STREAM,Uri.parse(media.id))
-                    .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                context.startActivity(android.content.Intent.createChooser(intent,""))
-            }){LText("分享")}
+            Button(onClick={vm.start(listOf(media.id))},enabled=!vm.busy&&data.settings.account.isNotEmpty(),modifier=Modifier.fillMaxWidth()){LIcon(Icons.Outlined.CloudUpload,null);LText("备份此项目")}
+            data.itemMap[media.id]?.let{item->SettingsRow(phaseLabel(item.state),icon=Icons.Outlined.History,onClick={vm.showItem(item)})}
+
         }
     }
+    if(filename)AlertDialog(onDismissRequest={filename=false},title={LText("完整文件名")},text={androidx.compose.foundation.text.selection.SelectionContainer{LText(media.name,localize=false)}},confirmButton={TextButton(onClick={filename=false}){LText("完成")}},dismissButton={TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(media.name))}){LText("复制文件名")}})
+
 }
 @Composable
 fun DetailRow(label:String,value:String,valueLocalized:Boolean=true){Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.SpaceBetween){LText(label,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);LText(value,style=MaterialTheme.typography.bodyMedium,modifier=Modifier.padding(start=15.dp),localize=valueLocalized)};HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)}

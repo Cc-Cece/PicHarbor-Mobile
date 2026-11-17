@@ -24,12 +24,15 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     val statistics=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.statisticsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     val inspectedJob=MutableStateFlow("")
     var inspectedItem by mutableStateOf("");private set
-    fun showItem(item:BackupItem){inspectedItem=item.id;inspectedJob.value=item.jobId;navigate("task-detail")}
+    fun showItem(item:BackupItem){navigate("task-detail");inspectedItem=item.id;inspectedJob.value=item.jobId}
     fun itemAction(id:String,operation:String)=action{graph.backup.itemAction(id,operation)}
+    fun itemActions(ids:List<String>,operation:String)=action{ids.forEach{graph.backup.itemAction(it,operation)}}
     fun archiveItem(id:String,restore:Boolean=false)=action{graph.dao.archiveItem(id,if(restore)0 else System.currentTimeMillis())}
     val jobDetails=inspectedJob.flatMapLatest{graph.dao.jobItemsFlow(it)}.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
     var detailLimit by mutableIntStateOf(200)
-    fun showJob(id:String){inspectedJob.value=id;detailLimit=200;navigate("job-details")}
+    var batchStatus by mutableStateOf("all");private set
+    var batchArchived by mutableStateOf(false);private set
+    fun showJob(id:String,status:String="all",archived:Boolean=false){navigate("job-details");inspectedJob.value=id;detailLimit=200;batchStatus=status;batchArchived=archived}
     fun taskProxy(value:String)=action {
         val job=graph.dao.job(inspectedJob.value)?:return@action
         if(job.account!=settings.value.account)return@action
@@ -44,14 +47,36 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     var scanPurpose by mutableStateOf("");private set
     var scanResults by mutableStateOf(listOf<String>());private set
     var scanner:(Boolean)->Unit={}
+    var proxyFilePicker:()->Unit={}
+    fun importProxyFile(uri:Uri)=proxyAction {
+        val text=withContext(Dispatchers.IO){
+            getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream ->
+                val output=java.io.ByteArrayOutputStream()
+                val buffer=ByteArray(8192)
+                while(true) {
+                    val count=stream.read(buffer);if(count<0)break
+                    if(output.size()+count>4*1024*1024)throw EngineFailure("PROXY_CONFIG_UNSUPPORTED")
+                    output.write(buffer,0,count)
+                }
+                output.toString("UTF-8")
+            }?:throw EngineFailure("PROXY_CONFIG_UNSUPPORTED")
+        }
+        graph.proxy.importText(text,"");message="已导入配置"
+    }
     fun scanQr(purpose:String,image:Boolean) { scanPurpose=purpose;scanResults=emptyList();scanner(image) }
     fun acceptScan(values:List<String>) { scanResults=values.distinct();if(values.isEmpty())say("未识别到二维码，请重试") }
     fun clearScan(){scanResults=emptyList();scanPurpose=""}
     var navigationForward by mutableStateOf(true);private set
-    private val stack=mutableListOf<String>()
+    private val stacks=MobilePage.roots.associateWith{mutableListOf<MobileNavigationEntry>()}
+    private val tabEntries=mutableMapOf<MobilePage,MobileNavigationEntry>()
+    var selectedTab by mutableStateOf(MobilePage.Photos);private set
+    private fun entry()=MobileNavigationEntry(MobilePage.from(page),activeMediaId,inspectedItem,inspectedJob.value,inspectedProfile,batchStatus,batchArchived)
+    private fun restore(entry:MobileNavigationEntry){page=entry.page.route;activeMediaId=entry.media;inspectedItem=entry.item;inspectedJob.value=entry.job;inspectedProfile=entry.profile;batchStatus=entry.status;batchArchived=entry.archived}
+    val canGoBack get()=sheet.isNotEmpty()||(selectionMode&&page=="photos")||stacks.getValue(selectedTab).isNotEmpty()
     var selected by mutableStateOf(setOf<String>());private set
     var selectionMode by mutableStateOf(false);private set
-    var activeMedia by mutableStateOf<MediaEntry?>(null);private set
+    private var activeMediaId by mutableStateOf("")
+    val activeMedia get()=media.value.firstOrNull{it.id==activeMediaId}
     var filter by mutableStateOf("all")
     var libraryAlbum by mutableStateOf("")
     var backupListKind by mutableStateOf("pending");private set
@@ -89,12 +114,58 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
             }
         }
     }
-    fun navigate(destination:String){navigationForward=true;stack+=page;page=destination;sheet="";selected=emptySet();selectionMode=false}
-    fun tab(destination:String){stack.clear();page=destination;sheet="";selected=emptySet();selectionMode=false}
-    fun back(){if(sheet.isNotEmpty()){sheet="";return};if(selectionMode){clearSelection();return};navigationForward=false;page=stack.removeLastOrNull()?:"photos"}
-    fun open(media:MediaEntry){if(selectionMode){select(media.id);return};activeMedia=media;navigate("detail")}
+    private var navigationRestored=false
+    fun navigationSnapshot():String {
+        fun json(e:MobileNavigationEntry)=JSONObject().put("page",e.page.route).put("media",e.media).put("item",e.item).put("job",e.job).put("profile",e.profile).put("status",e.status).put("archived",e.archived)
+        val tabs=JSONObject();val history=JSONObject()
+        MobilePage.roots.forEach { root ->
+            tabs.put(root.route,json(if(root==selectedTab)entry() else tabEntries[root]?:MobileNavigationEntry(root)))
+            history.put(root.route,org.json.JSONArray().apply{stacks.getValue(root).forEach{put(json(it))}})
+        }
+        return JSONObject().put("schema",1).put("selected",selectedTab.route).put("tabs",tabs).put("history",history)
+            .put("filter",filter).put("media_type",type).put("album",libraryAlbum)
+            .put("selection",org.json.JSONArray(if(selected.size<=1000)selected.toList() else emptyList<String>())).put("selecting",selectionMode&&selected.size<=1000).toString()
+    }
+    fun restoreNavigation(value:String?) {
+        if(navigationRestored)return;navigationRestored=true
+        if(value.isNullOrBlank())return
+        runCatching {
+            val data=JSONObject(value);if(data.optInt("schema")!=1)return
+            fun entry(data:JSONObject)=MobileNavigationEntry(MobilePage.from(data.getString("page")),data.optString("media"),data.optString("item"),data.optString("job"),data.optString("profile"),data.optString("status","all"),data.optBoolean("archived"))
+            val restoredTabs=MobilePage.roots.associateWith{entry(data.getJSONObject("tabs").getJSONObject(it.route))}
+            val restoredStacks=MobilePage.roots.associateWith{root->val a=data.getJSONObject("history").getJSONArray(root.route);(0 until a.length()).map{entry(a.getJSONObject(it))}}
+            val root=MobilePage.from(data.getString("selected"));require(root.root)
+            tabEntries.putAll(restoredTabs);restoredStacks.forEach{(root,rows)->stacks.getValue(root).apply{clear();addAll(rows)}}
+            selectedTab=root;restore(restoredTabs.getValue(root))
+            filter=data.optString("filter","all").takeIf{it in setOf("all","pending","uploaded")}?:"all"
+            type=data.optString("media_type","all");libraryAlbum=data.optString("album")
+            val ids=data.optJSONArray("selection");selected=if(ids==null)emptySet() else (0 until ids.length()).map{ids.getString(it)}.toSet()
+            selectionMode=data.optBoolean("selecting")
+        }
+    }
+    fun navigate(destination:String){
+        val target=MobilePage.from(destination)
+        if(target.route==page)return
+        if(target.root){tab(destination);return}
+        navigationForward=true;stacks.getValue(selectedTab).add(entry())
+        page=target.route;sheet=""
+    }
+    fun tab(destination:String){
+        val target=MobilePage.from(destination);require(target.root)
+        if(target==selectedTab)return
+        tabEntries[selectedTab]=entry();selectedTab=target
+        restore(tabEntries[target]?:MobileNavigationEntry(target));sheet=""
+    }
+    fun back(){
+        if(sheet.isNotEmpty()){sheet="";return}
+        if(selectionMode&&page=="photos"){clearSelection();return}
+        navigationForward=false
+        stacks.getValue(selectedTab).removeLastOrNull()?.let(::restore)
+    }
+    fun open(media:MediaEntry){if(selectionMode&&page=="photos"){select(media.id);return};navigate("detail");activeMediaId=media.id}
     fun select(id:String){selectionMode=true;selected=if(id in selected)selected-id else selected+id}
     fun selectAll(ids:List<String>){selectionMode=true;selected=selected+ids}
+    fun toggleSelection(){if(selectionMode)clearSelection() else selectionMode=true}
     fun clearSelection(){selectionMode=false;selected=emptySet()}
     fun clearMessage(){message=""}
     fun say(value:String){message=value}
@@ -136,7 +207,7 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     }
     fun selectAccount(email:String)=action {
         graph.selectAccount(email);loginRequired=false;albumChoices=emptyList();clearSelection()
-        activeMedia=null;sheet="";page=if(page=="detail")"photos" else page
+        activeMediaId="";sheet="";if(page=="detail")back()
         message="已切换备份账号"
     }
     fun removeAccount(email:String)=action {
@@ -248,11 +319,20 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
         for(uri in uris)runCatching{graph.app.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}
         val ids=graph.media.importUris(uris);selected=ids.toSet();selectionMode=true;tab("photos");selected=ids.toSet();selectionMode=true
     }
+    fun confirmScope(all:Boolean,folders:Set<String>,automatic:Boolean)=action {
+        if(graph.preferences.get().account.isBlank()){navigate("accounts");return@action}
+        graph.preferences.folders(folders);graph.preferences.boolean("allFolders",all)
+        graph.preferences.boolean("onboarded",true);graph.preferences.boolean("auto",automatic)
+        graph.scheduler.configure();if(automatic)graph.scheduler.checkSoon();back()
+    }
+    fun setAlbumSync(enabled:Boolean)=action {graph.preferences.string("albumMode",if(enabled)"folder" else "none");graph.scheduler.configure()}
+    var inspectedProfile by mutableStateOf("");private set
+    fun showProfile(id:String){navigate("proxy-profile");inspectedProfile=id}
     fun finishSetup()=action {
         graph.preferences.boolean("onboarded",true);graph.preferences.boolean("auto",true);graph.scheduler.configure();graph.scheduler.checkSoon();tab("backup");message="自动备份已开启"
     }
     fun start(ids:List<String>?=null,allowMobile:Boolean=false) {
-        if(settings.value.account.isEmpty()||loginRequired){sheet="login";return}
+        if(settings.value.account.isEmpty()||loginRequired){navigate("connection");return}
         if(settings.value.wifi&&!allowMobile&&!graph.backup.onWifi()){pendingManualIds=ids;sheet=if(ids!=null)"mobile-selected" else "mobile-all";return}
         action {
             val submission=graph.backup.enqueue(ids,allowMobile=allowMobile)
