@@ -1,4 +1,5 @@
 "%.1f 秒" = "%.1f s";
+"14 天 / 64 MiB" = "14 days / 64 MiB";
 "A · 运行环境" = "A · Runtime";
 "B · Google 账号" = "B · Google account";
 "Google 拒绝了应用内登录。可导入已有 gpmc 凭据验证，其余情况需要调整认证适配。" = "Google declined in-app sign-in. Try importing existing gpmc credentials.";
@@ -285,6 +286,7 @@
 "导入并连接" = "Import and connect";
 "导出失败，请重试。" = "Export failed. Please try again.";
 "导出脱敏诊断" = "Export private-data-free diagnostics";
+"导出范围" = "Export range";
 "导出诊断报告" = "Export diagnostics";
 "封装动态照片" = "Package Motion Photo";
 "封装文件已确认，但云端动态标记尚未出现，将自动继续检查。" = "The file is saved, but its motion flag has not appeared. Checking will continue automatically.";
@@ -422,6 +424,7 @@
 "拍摄信息" = "Camera information";
 "拍摄时间" = "Date taken";
 "拒绝" = "Decline";
+"持续诊断" = "Continuous diagnostics";
 "按当前核验策略继续" = "Continue with current check settings";
 "按当前设置重新备份" = "Back up again with current settings";
 "提交超时（秒）" = "Commit timeout (seconds)";
@@ -443,6 +446,7 @@
 "无法读取图片，请选择另一张二维码图片。" = "Could not read the image. Choose another QR code image.";
 "无法读取这项照片，请检查相册访问权限。" = "This photo could not be read. Check Photos access.";
 "无进展超时（秒）" = "No-progress timeout (seconds)";
+"日志保留" = "Log retention";
 "日志默认持续记录，保留 14 天或 64 MiB。导出包含 JSONL 和可读文本，不包含账号、凭据或媒体内容。" = "Logs are always recorded and retained for 14 days or 64 MiB. Exports contain JSONL and readable text, with no accounts, credentials or media.";
 "日期：{0} 至 {1}" = "Dates: {0} to {1}";
 "旧任务 {0} 项，可迁移 {1} 项" = "{0} legacy jobs, {1} migratable";
@@ -464,6 +468,7 @@
 "暂存文件不可用。点击重试，将重新读取照片并继续备份。" = "The temporary file is unavailable. Tap Retry to read the photo again and continue.";
 "暂存文件发生变化。点击重试，将重新读取照片并核对内容。" = "The temporary file has changed. Tap Retry to read the photo again and check its contents.";
 "暂存资源" = "Temporary files";
+"暂无日志" = "No retained logs";
 "暂无符合条件的任务" = "No matching tasks";
 "暂时无法分享" = "Unable to share";
 "暂时无法打开 Google 相册" = "Unable to open Google Photos";
@@ -609,6 +614,7 @@
 "照片（含实况）" = "Photos (including Live Photos)";
 "版本保留" = "Versions to keep";
 "版本策略" = "Version settings";
+"现存覆盖" = "Retained coverage";
 "生效策略" = "Effective policy";
 "用数据线连接，并打开电脑上的 PicHarbor。" = "Connect with a cable and open PicHarbor on the computer.";
 "电脑" = "Computer";
@@ -709,6 +715,7 @@
 "节省空间" = "Storage saver";
 "苹果原始资源的云端配对协议尚未验证；原件已保留，不会按两个普通文件上传。" = "Original Apple pairing is not verified for this account. Originals are kept and will not be uploaded as two unrelated files.";
 "蜂窝网络" = "Cellular";
+"覆盖日期按现存日志文件计算，事件范围以导出为准。" = "Coverage dates come from retained log files. The export records the actual event range.";
 "视频" = "Videos";
 "计算中…" = "Calculating…";
 "计配额原画质" = "Original quality · uses quota";

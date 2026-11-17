@@ -256,6 +256,7 @@ fun NetworkScreen(vm:HarborViewModel,data:HarborUiData) {
             ProductValue("当前网络",if(vm.graph.backup.onWifi())"Wi-Fi" else "非 Wi-Fi")
             val power=LocalContext.current.getSystemService(android.os.PowerManager::class.java)
             ProductValue("省电模式",if(power.isPowerSaveMode)"已开启" else "未开启")
+            ProductValue("暂存资源",formatSize(vm.graph.pipeline.stagedBytes))
             SettingsRow("Android 后台运行设置",onClick={vm.navigate("background-settings")})
         }
     }
@@ -322,9 +323,15 @@ fun BackgroundSettingsScreen(vm:HarborViewModel,data:HarborUiData) {
 
 @Composable
 fun DiagnosticsScreen(vm:HarborViewModel,data:HarborUiData,onExport:()->Unit) {
+    val coverage by produceState<Pair<Long,Long>?>(null) {value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO){Diagnostics.retainedRange()}}
+    val locale=androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     ProductPage("诊断",vm) {
-        ProductSection(footer="日志默认常开，保留 14 天或 64 MiB。导出仅包含现存日志，实际覆盖范围记录在导出文件中。") {
+        ProductSection("持续诊断",footer="覆盖日期按现存日志文件计算，事件范围以导出为准。") {
             ProductValue("日志保留","14 天 / 64 MiB")
+            val dates=java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.SHORT).withLocale(locale).withZone(java.time.ZoneId.systemDefault())
+            ProductValue("现存覆盖",coverage?.let{dates.format(java.time.Instant.ofEpochMilli(it.first))+" – "+dates.format(java.time.Instant.ofEpochMilli(it.second))}?:"暂无日志")
+        }
+        ProductSection("导出范围",footer="日志默认常开，保留 14 天或 64 MiB。导出仅包含现存日志，实际覆盖范围记录在导出文件中。") {
             SettingsRow("导出诊断日志","选择日期范围，包含 JSONL 与同源可读文本 ZIP",onClick=onExport)
         }
     }

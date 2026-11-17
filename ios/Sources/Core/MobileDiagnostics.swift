@@ -61,6 +61,17 @@ final class MobileDiagnostics: @unchecked Sendable {
         var total = remaining.reduce(0) { $0 + $1.1 }
         for (file, size) in remaining where total > limit { try? FileManager.default.removeItem(at: file); total -= size }
     }
+    func retainedRange() async -> (Date, Date)? {
+        await withCheckedContinuation { continuation in
+            queue.async { [self] in
+                let files = logs()
+                let starts = files.compactMap { Double($0.lastPathComponent.split(separator: "-").first ?? "") }.map { Date(timeIntervalSince1970: $0 / 1000) }
+                let ends = files.compactMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+                if let first = starts.min(), let last = ends.max() { continuation.resume(returning: (first, last)) }
+                else { continuation.resume(returning: nil) }
+            }
+        }
+    }
     func export(from: Date?, to: Date?, summary: String) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             queue.async { [self] in

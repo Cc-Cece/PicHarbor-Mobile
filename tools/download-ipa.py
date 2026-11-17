@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import time
 import zipfile
 
 import requests
@@ -25,12 +26,21 @@ target=args.output/'artifact.zip.part'
 digest=hashlib.sha256();size=0
 # Requests strips Authorization when GitHub redirects to its artifact-storage host.
 with requests.Session()as session:
-    with session.get(artifact['archive_download_url'],headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'},timeout=(20,60),stream=True)as response:
+    redirect=session.get(artifact['archive_download_url'],headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'},timeout=(20,30),allow_redirects=False)
+    redirect.raise_for_status()
+    signed_url=redirect.headers.get('Location')
+    if not signed_url or not signed_url.startswith('https://'):raise SystemExit('Missing secure artifact download redirect')
+    direct=requests.Session();direct.trust_env=False
+    try:response=direct.get(signed_url,timeout=(10,30),stream=True)
+    except requests.RequestException:response=session.get(signed_url,timeout=(20,30),stream=True)
+    started=time.monotonic()
+    with response:
         response.raise_for_status()
         with target.open('wb')as output:
-            for block in response.iter_content(1024*1024):
+            for block in response.iter_content(65536):
                 output.write(block);digest.update(block);size+=len(block)
-                if size%(8*1024*1024)==0:print(f'Downloaded {size} bytes',flush=True)
+                if size%(1024*1024)==0:print(f'Downloaded {size} bytes',flush=True)
+                if time.monotonic()-started>300:raise SystemExit('Artifact download exceeded five minutes; retry the download')
 if 'sha256:'+digest.hexdigest()!=artifact['digest']:raise SystemExit('GitHub artifact checksum does not match')
 with zipfile.ZipFile(target)as archive:
     for item in archive.infolist():

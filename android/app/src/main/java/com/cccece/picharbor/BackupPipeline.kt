@@ -16,6 +16,7 @@ class BackupPipeline(private val graph:AppGraph) {
     private val staged=mutableMapOf<String,Long>()
     val activity=MutableStateFlow<Map<String,Int>>(emptyMap())
     val effective=MutableStateFlow(JSONObject())
+    val stagedBytes:Long get()=synchronized(staged){staged.values.sum()}
     private var pressureAt=0L
     private var constrained=false
     private var severe=false

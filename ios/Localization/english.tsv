@@ -877,3 +877,10 @@ HTTP 或 HTTPS 订阅链接|HTTP or HTTPS subscription URL
 共享核心暂不可用，请稍后重试。|The shared core is unavailable. Please try again later.
 图库暂未提供所选版本，请重新选择版本或稍后重试。|The selected version is not available from the library. Choose another version or try again later.
 传输到电脑|Transfer to computer
+持续诊断|Continuous diagnostics
+覆盖日期按现存日志文件计算，事件范围以导出为准。|Coverage dates come from retained log files. The export records the actual event range.
+现存覆盖|Retained coverage
+暂无日志|No retained logs
+导出范围|Export range
+日志保留|Log retention
+14 天 / 64 MiB|14 days / 64 MiB

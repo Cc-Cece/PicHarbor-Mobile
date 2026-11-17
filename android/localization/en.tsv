@@ -1405,3 +1405,8 @@
 "传输范围"	"Transfer scope"
 "将发送"	"Items to send"
 "连接电脑"	"Connect to computer"
+"导出范围"	"Export range"
+"持续诊断"	"Continuous diagnostics"
+"暂无日志"	"No retained logs"
+"现存覆盖"	"Retained coverage"
+"覆盖日期按现存日志文件计算，事件范围以导出为准。"	"Coverage dates come from retained log files. The export records the actual event range."

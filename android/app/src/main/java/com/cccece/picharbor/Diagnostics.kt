@@ -273,6 +273,13 @@ object Diagnostics {
     }.getOrElse{JSONObject().put("network","unknown")}
 
     /** Export on Dispatchers.IO, never the log writer. No business DB, engine or account access. */
+    /** File dates for settings; the export reports exact retained event coverage. */
+    fun retainedRange():Pair<Long,Long>? {
+        val files=directory?.listFiles()?.filter{it.extension=="jsonl"}.orEmpty()
+        if(files.isEmpty())return null
+        val starts=files.map{file->Regex("events-\\d{4}-\\d{2}-\\d{2}-(\\d+)-").find(file.name)?.groupValues?.get(1)?.toLongOrNull()?:file.lastModified()}
+        return starts.min() to files.maxOf{it.lastModified()}
+    }
     fun export(output:OutputStream,range:LogRange):String {
         check(exporting.compareAndSet(false,true)){"EXPORT_BUSY"}
         try {
