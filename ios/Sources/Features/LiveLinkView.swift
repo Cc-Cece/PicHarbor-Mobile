@@ -83,7 +83,7 @@ struct LiveLinkView: View {
                 }
             }
         }
-        .navigationTitle(L10n.text("传到这台电脑"))
+        .navigationTitle(L10n.text("传输到电脑"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { link.reload() }
         .onDisappear { if !scan { link.stop() } }

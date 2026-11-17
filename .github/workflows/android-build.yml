@@ -1,0 +1,35 @@
+name: Android build
+on:
+  push:
+    branches: [main, feat/mobile-framework-parity]
+    paths: ['android/**', '.github/workflows/android-build.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./android/.github/actions/setup-build
+      - name: Verify fixed source provenance
+        run: python tools/verify_engine.py
+      - name: Build without private release key or tests
+        run: gradle :app:assembleDebug "-PbuildPython=$(which python)" --console=plain
+      - name: Inspect bundled runtime and licenses
+        run: python tools/inspect_release.py --apk app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-preview-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/gpmc.lock.json
+          if-no-files-found: error
+          retention-days: 14

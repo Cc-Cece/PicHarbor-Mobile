@@ -87,7 +87,7 @@ struct HarborRootView: View {
                 link.prepareIncoming(assets)
             }
         }
-        .alert(L10n.text("传到这台电脑"), isPresented: Binding(get: { link.incomingReady }, set: { if !$0 { link.declineIncoming() } })) {
+        .alert(L10n.text("传输到电脑"), isPresented: Binding(get: { link.incomingReady }, set: { if !$0 { link.declineIncoming() } })) {
             Button(L10n.text("确认发送")) { link.confirmIncoming() }
             Button(L10n.text("拒绝"), role: .cancel) { link.declineIncoming() }
         } message: {
@@ -124,8 +124,6 @@ struct BackupDashboard: View {
             Section {
                 Button { confirm = true } label: { Label(L10n.text("备份当前范围"), systemImage: "arrow.up.circle.fill").font(.headline) }
                     .disabled(model.account.isEmpty || !model.initialized || model.enqueueing || model.recoveryRequired)
-                NavigationLink { LiveLinkView() } label: { Label(L10n.text("传到这台电脑"), systemImage: "desktopcomputer") }
-                    .accessibilityIdentifier("link.open")
                 NavigationLink { BackupScopeView() } label: { Label(L10n.text("备份范围"), systemImage: "rectangle.stack") }
                 NavigationLink { BackupPreferencesView() } label: { Label(L10n.text("备份偏好"), systemImage: "slider.horizontal.3") }
             }

@@ -22,6 +22,7 @@ struct HarborSettingsView: View {
                 NavigationLink { NetworkPreferencesView() } label: { Label(L10n.text("网络与后台"), systemImage: "wifi") }
                 NavigationLink { ProxyPreferencesView() } label: { Label(L10n.text("应用内代理"), systemImage: "network") }.accessibilityIdentifier("settings.proxy")
                 NavigationLink { ActivityArchiveSettingsView() } label: { Label(L10n.text("活动记录"), systemImage: "archivebox") }
+                NavigationLink { LiveLinkView() } label: { Label(L10n.text("传输到电脑"), systemImage: "desktopcomputer") }.accessibilityIdentifier("link.open")
             }
             Section(L10n.text("设备")) {
                 NavigationLink { InterfacePreferencesView() } label: { Label(L10n.text("界面"), systemImage: "paintpalette") }.accessibilityIdentifier("settings.interface")

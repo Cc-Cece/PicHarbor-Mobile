@@ -86,7 +86,7 @@ struct AssetBackupState {
 }
 
 enum LibraryBackupFilter: String, CaseIterable, Identifiable {
-    case all, backedUp, notBackedUp
+    case all, notBackedUp, backedUp
     var id: String { rawValue }
     var title: String {
         switch self { case .all: return L10n.text("全部"); case .backedUp: return L10n.text("已备份"); case .notBackedUp: return L10n.text("未备份") }
