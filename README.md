@@ -6,6 +6,8 @@ The product and page structure follow the frozen iOS `e0c495c9b23dba5b40eaff7e01
 
 本轮交付及构建安装记录见 [DELIVERY-2026-11-18.md](specs/DELIVERY-2026-11-18.md)。代码位于 `feat/mobile-framework-parity`，用户实机验收独立记录。
 
+后续 Android 原生体验优化版本为 `2.0.0-alpha.3`，见 [优化记录](specs/ANDROID-NATIVE-EXPERIENCE-2026-11-18.md)；保留已确认的页面框架。
+
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. Functional tests and phone UI interaction are not executed during this delivery at the user's request.
 
 ## Development
