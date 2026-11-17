@@ -1,0 +1,338 @@
+package com.cccece.picharbor
+
+import android.app.Application
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.runtime.*
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import org.json.JSONObject
+import java.util.UUID
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class HarborViewModel(app:Application):AndroidViewModel(app) {
+    val graph=(app as PicHarborApp).graph
+    val settings=graph.preferences.flow.stateIn(viewModelScope,SharingStarted.Eagerly,HarborSettings())
+    val accounts=graph.credentials.accounts
+    val accountSwitching=graph.switching
+    val media=graph.dao.mediaFlow().stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
+    val records=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.backupsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
+    val jobs=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.jobsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
+    val items=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.itemsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
+    val statistics=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.statisticsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
+    val inspectedJob=MutableStateFlow("")
+    var inspectedItem by mutableStateOf("");private set
+    fun showItem(item:BackupItem){inspectedItem=item.id;inspectedJob.value=item.jobId;navigate("task-detail")}
+    fun itemAction(id:String,operation:String)=action{graph.backup.itemAction(id,operation)}
+    fun archiveItem(id:String,restore:Boolean=false)=action{graph.dao.archiveItem(id,if(restore)0 else System.currentTimeMillis())}
+    val jobDetails=inspectedJob.flatMapLatest{graph.dao.jobItemsFlow(it)}.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
+    var detailLimit by mutableIntStateOf(200)
+    fun showJob(id:String){inspectedJob.value=id;detailLimit=200;navigate("job-details")}
+    fun taskProxy(value:String)=action {
+        val job=graph.dao.job(inspectedJob.value)?:return@action
+        if(job.account!=settings.value.account)return@action
+        val wasRunning=graph.backup.activeJob.value==job.id&&job.state=="running"
+        if(wasRunning)graph.backup.stopAndWait()
+        val current=graph.dao.job(job.id)?:job
+        graph.dao.putJob(current.copy(proxyPolicy=value,state=if(wasRunning&&current.state=="paused")"queued" else current.state))
+        if(job.state!="paused")graph.scheduler.launchManual(job.allowMobile)
+        back()
+    }
+    var page by mutableStateOf("photos");private set
+    var scanPurpose by mutableStateOf("");private set
+    var scanResults by mutableStateOf(listOf<String>());private set
+    var scanner:(Boolean)->Unit={}
+    fun scanQr(purpose:String,image:Boolean) { scanPurpose=purpose;scanResults=emptyList();scanner(image) }
+    fun acceptScan(values:List<String>) { scanResults=values.distinct();if(values.isEmpty())say("未识别到二维码，请重试") }
+    fun clearScan(){scanResults=emptyList();scanPurpose=""}
+    var navigationForward by mutableStateOf(true);private set
+    private val stack=mutableListOf<String>()
+    var selected by mutableStateOf(setOf<String>());private set
+    var selectionMode by mutableStateOf(false);private set
+    var activeMedia by mutableStateOf<MediaEntry?>(null);private set
+    var filter by mutableStateOf("all")
+    var libraryAlbum by mutableStateOf("")
+    var backupListKind by mutableStateOf("pending");private set
+    fun showBackupList(kind:String){backupListKind=kind;navigate("backup-list")}
+    var type by mutableStateOf("all")
+    var fromDate by mutableStateOf(0L)
+    var toDate by mutableStateOf(Long.MAX_VALUE)
+    var sheet by mutableStateOf("")
+    var busy by mutableStateOf(false);private set
+    var message by mutableStateOf("");private set
+    var loginRequired by mutableStateOf(false);private set
+    var permissionRevision by mutableIntStateOf(0);private set
+    var albumChoices by mutableStateOf(listOf<Pair<String,String>>());private set
+    var pendingManualIds:List<String>?=null;private set
+    val engineReady get()=graph.engineReady
+    init {
+        refresh()
+        viewModelScope.launch {
+            media.map { rows -> rows.map { Triple(it.id,it.modified,it.size) } }.distinctUntilChanged().collectLatest { versions ->
+                if(versions.isNotEmpty()) {
+                    try {
+                        graph.startup.await()
+                        if(graph.engineReady)graph.backup.identifiedMedia()
+                    } catch(error:CancellationException){throw error}
+                    catch(_:Exception){ /* A later permission or library update retries metadata indexing. */ }
+                }
+            }
+        }
+        viewModelScope.launch {
+            combine(items,settings){rows,s->rows to s}.collect { (_,s) ->
+                if(s.archiveEnabled) {
+                    val threshold=System.currentTimeMillis()-s.archiveDays*86400000L
+                    graph.dao.archiveEligible(s.account,threshold,System.currentTimeMillis())
+                }
+            }
+        }
+    }
+    fun navigate(destination:String){navigationForward=true;stack+=page;page=destination;sheet="";selected=emptySet();selectionMode=false}
+    fun tab(destination:String){stack.clear();page=destination;sheet="";selected=emptySet();selectionMode=false}
+    fun back(){if(sheet.isNotEmpty()){sheet="";return};if(selectionMode){clearSelection();return};navigationForward=false;page=stack.removeLastOrNull()?:"photos"}
+    fun open(media:MediaEntry){if(selectionMode){select(media.id);return};activeMedia=media;navigate("detail")}
+    fun select(id:String){selectionMode=true;selected=if(id in selected)selected-id else selected+id}
+    fun selectAll(ids:List<String>){selectionMode=true;selected=selected+ids}
+    fun clearSelection(){selectionMode=false;selected=emptySet()}
+    fun clearMessage(){message=""}
+    fun say(value:String){message=value}
+    /** System activity results must not be dropped while a refresh is finishing. */
+    fun afterAction(block:()->Unit){viewModelScope.launch{while(busy)delay(50);block()}}
+    fun action(block:suspend ()->Unit) {
+        if(busy)return
+        busy=true
+        viewModelScope.launch {
+            try{block()}catch(error:Exception){val code=(error as? EngineFailure)?.code?:"ENGINE_ERROR";message=Messages.error(code);if(code=="LOGIN_REQUIRED"){loginRequired=true;graph.credentials.needsLogin(settings.value.account,true)}}
+            finally{busy=false}
+        }
+    }
+    fun proxyAction(block:suspend ()->Unit)=action {
+        val id=graph.backup.activeJob.value
+        val running=if(id.isNotBlank())graph.dao.job(id) else null
+        if(running!=null)graph.backup.stopAndWait()
+        try {block()} finally {
+            if(running!=null&&running.state=="running") {
+                graph.dao.job(id)?.takeIf{it.state=="paused"}?.let{graph.dao.putJob(it.copy(state="queued"));graph.scheduler.launchManual(it.allowMobile)}
+            }
+        }
+    }
+    fun refresh()=action {
+        withContext(Dispatchers.IO){graph.media.scan()};permissionRevision++
+    }
+    fun permissionsChanged(){permissionRevision++;if(busy)afterAction{refresh()} else refresh()}
+    fun login(token:String)=action {
+        graph.login(token);loginRequired=false;message="账号已连接"
+        if(graph.dao.nextJob(graph.preferences.get().account)!=null)graph.scheduler.launchManual()
+        if(!settings.value.onboarded)navigate("folders")
+    }
+    fun logout()=action {
+        graph.logout();loginRequired=false;sheet="";message="已退出，云端备份会保留";tab("settings")
+        withContext(Dispatchers.Main){android.webkit.CookieManager.getInstance().removeAllCookies(null);android.webkit.WebStorage.getInstance().deleteAllData()}
+    }
+    fun switchAccount(onLogin:()->Unit)=action {
+        sheet="";withContext(Dispatchers.Main){onLogin()}
+    }
+    fun selectAccount(email:String)=action {
+        graph.selectAccount(email);loginRequired=false;albumChoices=emptyList();clearSelection()
+        activeMedia=null;sheet="";page=if(page=="detail")"photos" else page
+        message="已切换备份账号"
+    }
+    fun removeAccount(email:String)=action {
+        graph.removeAccount(email);loginRequired=false;sheet="";clearSelection();message="已从此设备移除账号，云端内容保留"
+        withContext(Dispatchers.Main){android.webkit.CookieManager.getInstance().removeAllCookies(null);android.webkit.WebStorage.getInstance().deleteAllData()}
+    }
+    fun setProxy(enabled:Boolean,scheme:String,host:String,port:Int,username:String,password:String)=action {
+        val config=ProxyConfig(enabled,scheme.lowercase(),host.trim(),port,username.trim())
+        if(enabled) {
+            when(val validation=ProxyPolicy.validate(graph.harborCore,config)) {
+                ProxyPolicy.Validation.Valid -> {}
+                is ProxyPolicy.Validation.Invalid -> {
+                    // The core reports INVALID_PROXY; the UI wording lives
+                    // under PROXY_INVALID (plus the TLS-specific message).
+                    val code=if(validation.error=="INVALID_PROXY")"PROXY_INVALID" else validation.error
+                    message="代理设置无效：${Messages.error(code)}"; return@action
+                }
+            }
+        }
+        graph.preferences.boolean("proxyEnabled",enabled)
+        graph.preferences.string("proxyScheme",config.scheme)
+        graph.preferences.string("proxyHost",config.host)
+        graph.preferences.integer("proxyPort",config.port)
+        graph.preferences.string("proxyUser",config.username)
+        if(password.isNotEmpty())graph.credentials.saveProxyCredential(password)
+        message=if(enabled)"代理设置已保存" else "代理已关闭"
+        sheet=""
+    }
+    fun setBoolean(key:String,value:Boolean)=action {
+        if(key=="wifi"){applyNetworkPolicy(if(value)"none" else "all");return@action}
+        val active=if(key=="proxyEnabled")graph.backup.activeJob.value.takeIf{it.isNotBlank()}?.let{graph.dao.job(it)} else null
+        if(active!=null)graph.backup.stopAndWait()
+        if (key=="auto" && value && !settings.value.onboarded) { navigate("folders"); return@action }
+        if (key=="wifi") graph.preferences.mobile(if(value) "none" else "all")
+        else graph.preferences.boolean(key,value)
+        if(key=="wifi") { graph.backup.stopAndWait() }
+        graph.scheduler.configure()
+        if(active!=null&&active.state=="running")graph.dao.job(active.id)?.takeIf{it.state=="paused"}?.let{graph.dao.putJob(it.copy(state="queued"));graph.scheduler.launchManual(it.allowMobile)}
+    }
+    fun restoreDefaults()=action { graph.backup.stopAndWait(); graph.preferences.restoreBackupDefaults(); graph.scheduler.configure(); message="已恢复备份默认设置，请重新确认范围" }
+    fun applyConfirmationPolicy()=action {
+        val settings=graph.preferences.get()
+        jobs.value.filter{it.account==settings.account}.forEach { job ->
+            if(graph.dao.items(job.id).any{it.state=="waiting_confirmation"})
+                graph.dao.putJob(job.copy(strictConfirmation=settings.strictConfirmation))
+        }
+        graph.scheduler.launchManual()
+        message="已更新等待确认任务的检查设置"
+    }
+    fun savePipeline(mode:String,limits:String,execution:String)=action {
+        graph.preferences.string("pipelineLimits",limits)
+        graph.preferences.string("pipelineMode",mode)
+        graph.preferences.string("executionPolicy",execution)
+        graph.scheduler.configure();back()
+    }
+    fun pauseBatch(ids:List<String>)=action { graph.backup.pauseJobs(ids) }
+    fun resumeBatch(ids:List<String>)=action { graph.backup.resumeJobs(ids); graph.scheduler.launchManual() }
+    fun removeBatch(ids:List<String>)=action {
+        ids.forEach { id ->
+            graph.dao.items(id).filter{it.state !in setOf("done","exists","cancelled")}.forEach{graph.backup.itemAction(it.id,"remove")}
+            if(graph.dao.items(id).all{it.hidden})graph.dao.hideJob(id)
+        }
+    }
+    fun archiveSelected(ids:List<String>,restore:Boolean)=action{ids.forEach{graph.dao.archiveItem(it,if(restore)0 else System.currentTimeMillis())}}
+    fun archiveBatch(ids:List<String>,restore:Boolean=false)=action {
+        val time=if(restore)0 else System.currentTimeMillis()
+        ids.forEach { id->
+            val members=graph.dao.items(id)
+            members.filter{it.state in setOf("done","exists")}.forEach{graph.dao.archiveItem(it.id,time)}
+            if(members.all{it.state in setOf("done","exists","cancelled")})graph.dao.archiveJob(id,time)
+        }
+    }
+
+    fun setAllFolders(value:Boolean)=action {
+        graph.preferences.boolean("allFolders",value)
+        graph.scheduler.configure()
+        if(graph.preferences.get().onboarded)graph.scheduler.checkSoon()
+    }
+    fun setString(key:String,value:String)=action {
+        graph.preferences.string(key,value);graph.scheduler.configure()
+    }
+    fun setInteger(key:String,value:Int)=action {graph.preferences.integer(key,value)}
+    private suspend fun applyNetworkPolicy(value:String) {
+        val active=graph.backup.activeJob.value.takeIf{it.isNotBlank()}?.let{graph.dao.job(it)}
+        if(active!=null)graph.backup.stopAndWait()
+        graph.preferences.mobile(value)
+        if(active!=null&&active.state=="running")graph.dao.job(active.id)?.takeIf{it.state=="paused"}?.let{graph.dao.putJob(it.copy(state="queued"))}
+        graph.scheduler.configure();graph.scheduler.restorePending();sheet=""
+    }
+    fun setMobile(value:String)=action {applyNetworkPolicy(value)}
+    fun folder(key:String,checked:Boolean)=action {
+        val current=graph.preferences.get();var chosen=current.folders
+        if(current.allFolders)return@action
+        if(key=="@camera")chosen=if(checked)chosen+key else chosen-key
+        else {
+            val mediaFolder=media.value.find{it.folderKey==key}
+            if(mediaFolder?.folderName.equals("Camera",true)&&"@camera" in chosen)chosen=chosen-"@camera"
+            chosen=if(checked)chosen+key else chosen-key
+        }
+        graph.preferences.folders(chosen);graph.scheduler.configure()
+    }
+    fun addTree(uri:Uri)=action {
+        withContext(Dispatchers.IO) {
+            runCatching { graph.app.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }.getOrElse { graph.app.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            val current=graph.preferences.get();graph.preferences.trees(current.trees+uri.toString());graph.preferences.folders(current.folders+uri.toString());graph.media.scan()
+        };permissionRevision++
+    }
+    fun importFiles(uris:List<Uri>)=action {
+        for(uri in uris)runCatching{graph.app.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}
+        val ids=graph.media.importUris(uris);selected=ids.toSet();selectionMode=true;tab("photos");selected=ids.toSet();selectionMode=true
+    }
+    fun finishSetup()=action {
+        graph.preferences.boolean("onboarded",true);graph.preferences.boolean("auto",true);graph.scheduler.configure();graph.scheduler.checkSoon();tab("backup");message="自动备份已开启"
+    }
+    fun start(ids:List<String>?=null,allowMobile:Boolean=false) {
+        if(settings.value.account.isEmpty()||loginRequired){sheet="login";return}
+        if(settings.value.wifi&&!allowMobile&&!graph.backup.onWifi()){pendingManualIds=ids;sheet=if(ids!=null)"mobile-selected" else "mobile-all";return}
+        action {
+            val submission=graph.backup.enqueue(ids,allowMobile=allowMobile)
+            if(submission==null) {
+                val account=graph.preferences.get().account
+                if(graph.dao.pendingManual(account)>0){graph.scheduler.launchManual(allowMobile);message="正在启动待备份队列"}
+                else message="没有需要新增备份的项目"
+            } else {
+                graph.scheduler.launchManual(allowMobile)
+                message=if(submission.created>0)"已加入备份，将在后台处理" else "这些照片正在备份中"
+                watchSubmission(submission,graph.preferences.get().account)
+            }
+        }
+    }
+    private val watched=mutableSetOf<String>()
+    private fun watchSubmission(submission:BackupSubmission,account:String) {
+        val key=submission.itemIds.sorted().joinToString("|")
+        if(!watched.add(key))return
+        viewModelScope.launch {
+            try {
+                val chunks=submission.itemIds.chunked(800).map{graph.dao.observeItems(it)}
+                val finished=combine(combine(chunks){it.flatMap{rows->rows}},settings){rows,s->rows to s.account}
+                    .first{(rows,current)->current!=account||(rows.size==submission.itemIds.size&&rows.all{it.state in BackupPolicy.terminalItems||it.state=="album_pending"})}
+                if(finished.second!=account)return@launch
+                val rows=finished.first
+                val success=rows.count{it.state in setOf("done","exists")}
+                val failed=rows.count{it.state in setOf("failed","album_pending")}
+                message=when {
+                    failed>0->"备份结束：成功 $success 项，$failed 项需要处理，可在任务记录重试"
+                    rows.all{it.state=="exists"}->"云端已有相同内容，已确认备份；可在 Google 相册中使用官方“释放空间”"
+                    rows.all{it.state=="cancelled"}->"本次备份已取消"
+                    else->"备份完成，共 $success 项；云端已确认的内容，可在 Google 相册中使用官方“释放空间”"
+                }
+            } finally {watched.remove(key)}
+        }
+    }
+    fun pause()=action {graph.backup.pause()}
+    fun resume(id:String)=action {graph.backup.resume(id)}
+    fun retry(id:String)=action {graph.backup.retry(id)}
+    fun retryAll(ids:List<String>)=action {ids.distinct().forEach { graph.backup.retry(it) }}
+    fun end(id:String)=action {graph.backup.end(id)}
+    fun albums() {
+        sheet="albums"
+        action {graph.ensureAccount();val response=graph.engine.call("albums");val array=response.getJSONArray("albums");albumChoices=(0 until array.length()).map{array.getJSONObject(it).let{v->v.getString("id") to v.getString("name")}}}
+    }
+    fun album(mode:String,value:String="")=action {
+        graph.preferences.string("albumMode",mode);graph.preferences.string("albumValue",value);sheet=""
+    }
+    fun checkAccount()=action{graph.ensureAccount();loginRequired=false;message="账号连接正常，登录凭据会自动续期"}
+    /**
+     * Official free-up-space handoff: PicHarbor no longer deletes local
+     * originals itself. Only cloud-confirmed backups are pointed at the
+     * official Google Photos free-up-space; opening the link does not change
+     * any task state and does not mean cleanup is done.
+     */
+    fun openOfficialFreeSpace()=action {
+        val outcome=FreeSpaceGuide.launch(graph.app)
+        Diagnostics.event("ui.intent",attrs=JSONObject().put("kind","free_space_open").put("outcome",outcome.name.lowercase()))
+        message=when(outcome) {
+            FreeSpaceGuide.Outcome.OPENED_LINK->"已打开 Google 相册释放空间，请在官方页面确认清理"
+            FreeSpaceGuide.Outcome.OPENED_PHOTOS->"已打开 Google 相册，请使用官方“释放空间”"
+            FreeSpaceGuide.Outcome.OPENED_STORE->"未安装 Google 相册，已打开应用商店"
+            FreeSpaceGuide.Outcome.MANUAL_GUIDANCE->FreeSpaceGuide.MANUAL_STEPS
+        }
+    }
+    fun report():String=JSONObject().put("app","PicHarbor").put("version",BuildConfig.VERSION_NAME).put("author","cc_cece")
+        .put("device",android.os.Build.MODEL).put("android",android.os.Build.VERSION.SDK_INT).put("account_connected",settings.value.account.isNotBlank())
+        .put("visible_media",media.value.size).put("completed_jobs",jobs.value.count{it.state=="completed"})
+        .put("failed_items",items.value.count{it.state=="failed"})
+        .put("saved_accounts",accounts.value.size)
+        .put("task_states",JSONObject(items.value.groupingBy{it.state}.eachCount()))
+        .put("task_errors",JSONObject(items.value.filter{it.error.isNotBlank()}.groupingBy{it.error}.eachCount()))
+        .put("harbor_core",graph.harborCore.status())
+        .put("wifi_available",graph.backup.onWifi()).put("auto_enabled",settings.value.auto)
+        .put("time",System.currentTimeMillis()).toString(2)
+}
+
+fun formatSize(bytes:Long):String=when {
+    bytes>=1024L*1024*1024->"%.1f GB".format(bytes.toDouble()/(1024*1024*1024))
+    bytes>=1024*1024->"%.1f MB".format(bytes.toDouble()/(1024*1024))
+    bytes>=1024->"%.1f KB".format(bytes/1024.0)
+    else->"$bytes B"
+}

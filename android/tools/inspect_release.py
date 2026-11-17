@@ -1,0 +1,44 @@
+"""Inspect release contents; signature and manifest also verified with Android SDK tools."""
+import hashlib
+import io
+import json
+import zipfile
+import argparse
+from pathlib import Path
+
+from sync_gpmc import check as check_gpmc
+
+root = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser()
+parser.add_argument('--apk', type=Path, default=root / 'app/build/outputs/apk/release/app-release.apk')
+apk = parser.parse_args().apk
+baseline = json.loads((root / 'app/src/main/assets/engine-baseline.json').read_text(encoding='utf-8'))
+lock = check_gpmc(root)
+extension = json.loads((root / 'app/src/main/assets/engine-extension.json').read_text(encoding='utf-8'))
+with zipfile.ZipFile(apk) as archive:
+    names = archive.namelist()
+    assert 'lib/arm64-v8a/libpython3.13.so' in names
+    assert 'lib/arm64-v8a/libharbor_proxy.so' in names, 'Missing pinned native proxy runtime'
+    assert 'assets/proxy-notices/LICENSE' in names and 'assets/proxy-notices/arm64-v8a.json' in names
+    provenance=json.loads(archive.read('assets/proxy-notices/arm64-v8a.json'))
+    assert hashlib.sha256(archive.read('lib/arm64-v8a/libharbor_proxy.so')).hexdigest()==provenance['sha256'], 'Changed proxy executable'
+    assert 'assets/localization/en.json' in names and 'assets/localization/yue-Hant-HK.json' in names
+    assert all(name.startswith('lib/arm64-v8a/') for name in names if name.startswith('lib/'))
+    assert 'assets/LICENSE.txt' in names and 'assets/NOTICE.txt' in names
+    assert 'assets/diagnostic-event.schema.json' in names and 'assets/diagnostic-format.md' in names
+    assert json.loads(archive.read('assets/diagnostic-event.schema.json'))['properties']['schema_version']['const'] == 1
+    assert json.loads(archive.read('assets/gpmc.lock.json')) == lock, 'Stale packaged gpmc lock'
+    assert json.loads(archive.read('assets/engine-extension.json')) == extension, 'Stale packaged extension manifest'
+    assert not any('diagnostic-auth' in name or name.startswith('assets/demo/') for name in names)
+    with zipfile.ZipFile(io.BytesIO(archive.read('assets/chaquopy/app.imy'))) as python:
+        contents = set(python.namelist())
+        frozen = [item for item in baseline['files'] if not item['path'].startswith('gpmc/')]
+        shared = [{'path': 'gpmc/' + name, 'sha256': value} for name, value in lock['files'].items()]
+        for item in frozen + extension['files'] + shared:
+            name = item['path']; compiled = name.removesuffix('.py') + '.pyc'
+            assert name in contents or compiled in contents, f'Missing {name}'
+            if name in contents:
+                assert hashlib.sha256(python.read(name).replace(b'\r\n', b'\n') if name.startswith('gpmc/') else python.read(name)).hexdigest() == item['sha256'], f'Changed {name}'
+        assert not any(name.startswith(('android_probe.', 'cloud_probe.', 'profile_probe.')) for name in contents)
+        assert not any('diagnostic-auth' in name for name in contents)
+print('PASS: release arm64 runtime, pinned canonical gpmc + protobuf dependency + platform adapters, licenses; no prototype entry or demo assets')

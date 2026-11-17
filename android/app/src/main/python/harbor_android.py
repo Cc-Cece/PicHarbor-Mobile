@@ -1,0 +1,721 @@
+"""PicHarbor mobile integration. The existing auth and wire payloads remain in Api.
+
+Content evidence is distinct from filename skips and optimistic local caches.
+This module never deletes either local or remote media.
+"""
+from contextlib import closing, contextmanager
+import hashlib
+import base64
+import json
+import os
+import re
+import sqlite3
+import threading
+import time
+import uuid
+from pathlib import Path
+from urllib.parse import urlparse
+
+import requests
+import harbor_diagnostics as diag
+import harbor_android_deadline as protection
+from gpmc.api import Api
+from gpmc.client import Client
+from gpmc.db_update_parser import parse_db_update
+from gpmc.utils import parse_email
+
+
+from gpmc.errors import OperationCancelled as Cancelled, classify as error_code, known_integer
+
+
+class MobileApi(Api):
+    """Transport constraints only: reuse Api's authentication and protobuf logic."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.auth_lock = threading.RLock()
+
+    @property
+    def timeout(self):
+        return protection.seconds(getattr(self,'_base_timeout',60))
+
+    @timeout.setter
+    def timeout(self,value):
+        self._base_timeout=value
+
+    @property
+    def bearer_token(self):
+        with diag.observed_lock(self.auth_lock, "auth_lock"):
+            return super().bearer_token
+
+    def _new_session(self):
+        # Retry is controlled per item below, rather than multiplying urllib3 retries.
+        session = protection.session()
+        session.verify = True
+        session.trust_env = False
+        if self.proxy:
+            session.proxies.update({"https": self.proxy, "http": self.proxy})
+        return session
+
+
+class UploadReader:
+    def __init__(self, stream, size, checkpoint):
+        self.stream, self.len, self.checkpoint = stream, size, checkpoint
+    def read(self, size=-1):
+        self.checkpoint(self.stream.tell())
+        data = self.stream.read(size)
+        self.checkpoint(self.stream.tell())
+        return data
+    def tell(self): return self.stream.tell()
+    def seek(self, *args): return self.stream.seek(*args)
+    def fileno(self): return self.stream.fileno()
+
+
+class MobileService:
+    def __init__(self, home):
+        self.home = Path(home).resolve()
+        self.home.mkdir(parents=True, exist_ok=True)
+        os.environ["HOME"] = str(self.home)
+        os.chdir(self.home)
+        self.client = None
+        self.credential = ""
+        self.account = ""
+        self.proxy = ""
+        self.full_snapshot_id = ""
+        self.full_snapshot_at = 0.0
+        self.connection_lock = threading.RLock()
+        self.sync_lock = threading.RLock()
+        self.content_locks = [threading.Lock() for _ in range(64)]
+        self.lifecycle = threading.Condition()
+        self.active_operations = 0
+        self.exclusive_operation = False
+        self.waiting_writers = 0
+        self.timing_context = threading.local()
+
+    @contextmanager
+    def measured(self, stage):
+        start = time.monotonic()
+        try:
+            yield
+        finally:
+            metrics = getattr(self.timing_context, "values", None)
+            if metrics is not None:
+                value = metrics.setdefault(stage, {"ms": 0, "count": 0})
+                value["ms"] += max(0, int((time.monotonic() - start) * 1000))
+                value["count"] += 1
+
+    @contextmanager
+    def reading(self, callback):
+        acquire = getattr(callback, "acquireRead", None) if callback else None
+        acquired = False
+        try:
+            with self.measured("read_wait"):
+                if acquire is not None:
+                    if not acquire(): raise Cancelled()
+                    acquired = True
+            yield
+        finally:
+            if acquired: callback.releaseRead()
+
+    def check_digest(self, item, bridge, callback):
+        with self.reading(callback), self.measured("file_read"):
+            handle = bridge.open(item["uri"], item["name"])
+            try:
+                result = self.hashes(str(handle.getPath()), callback)
+            finally:
+                handle.close()
+        metrics = getattr(self.timing_context, "values", None)
+        if metrics is not None:
+            metrics.setdefault("read_bytes", {"ms": 0, "count": 0})["count"] += result["size"]
+        return result
+
+    @contextmanager
+    def operation(self, exclusive=False):
+        # Keep account/client/cache immutable for all in-flight operations,
+        # while allowing concurrent uploads within that account.
+        with diag.operation("lifecycle", "wait", kind="lifecycle"):
+            with self.lifecycle:
+                if exclusive: self.waiting_writers += 1
+                try:
+                    while self.exclusive_operation or (self.active_operations if exclusive else self.waiting_writers):
+                        self.lifecycle.wait(0.2)
+                    if exclusive: self.exclusive_operation = True
+                    else: self.active_operations += 1
+                finally:
+                    if exclusive: self.waiting_writers -= 1
+        try:
+            yield
+        finally:
+            with self.lifecycle:
+                if exclusive: self.exclusive_operation = False
+                else: self.active_operations -= 1
+                self.lifecycle.notify_all()
+
+    def connect(self, credential, timeout=60, proxy=""):
+        """Connect with an explicit proxy ("" = direct, the default).
+
+        The proxy URL may carry credentials; it is held in memory only, is
+        never logged, and TLS verification stays on (session.verify = True
+        in MobileApi._new_session). A changed proxy rebuilds the client so
+        a stale session is never reused.
+        """
+        with diag.observed_lock(self.connection_lock, "connection_lock"):
+            if self.client is None or self.credential != credential or self.proxy != proxy:
+                self.client = None
+                client = Client(auth_data=credential, timeout=timeout, log_level="CRITICAL", proxy=proxy)
+                api = MobileApi(client.auth_data, language=client.language, timeout=timeout, proxy=proxy)
+                _ = api.bearer_token
+                client.api = api
+                diag.install_api(api)
+                self.client = client
+                self.credential = client.auth_data
+                self.proxy = proxy
+                self.account = parse_email(client.auth_data).strip().lower()
+                self.full_snapshot_id = ""
+                self.full_snapshot_at = 0.0
+                self._schema()
+            before = int(self.client.api.auth_response_cache.get("Expiry", "0"))
+            checked = int(time.time())
+            _ = self.client.api.bearer_token
+            after = int(self.client.api.auth_response_cache["Expiry"])
+            return {"account": self.account, "credential": self.credential, "expiry": after,
+                    "refreshed": 0 < before <= checked < after}
+
+    def _schema(self):
+        key = hashlib.sha256(self.account.encode()).hexdigest()[:32]
+        self.db_path = self.home / f"cloud-{key}.sqlite"
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            db.executescript("""
+                CREATE TABLE IF NOT EXISTS cloud (media_key TEXT PRIMARY KEY, payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS albums (album_key TEXT PRIMARY KEY, title TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, token TEXT NOT NULL, ready INTEGER NOT NULL);
+                INSERT OR IGNORE INTO state VALUES(1,'',0);
+            """)
+
+    def check(self, callback):
+        if callback and callback.isCancelled():
+            raise Cancelled()
+
+    def emit(self, callback, phase, completed=0, total=0):
+        protection.progress(phase,completed)
+        diag.progress(phase, completed, total)
+        self.check(callback)
+        if callback:
+            callback.onEvent(json.dumps({"phase": phase, "completed": completed, "total": total}))
+
+    def hashes(self, path, callback=None):
+        sha1, sha256 = hashlib.sha1(), hashlib.sha256()
+        size = os.stat(path).st_size
+        completed = 0
+        with open(path, "rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                self.emit(callback, "hashing", completed, size)
+                sha1.update(chunk); sha256.update(chunk); completed += len(chunk)
+        return {"sha1": sha1.hexdigest(), "sha256": sha256.hexdigest(), "size": completed}
+
+    def lookup(self, item, bridge, callback):
+        """Pre-upload dedup lookup for harbor_core.decide_prepare.
+
+        Hashes the source and asks the cloud for the same content. No bytes
+        are uploaded, nothing is committed and nothing is deleted; the
+        caller decides (via the core) whether the upload can be skipped.
+        Returns the digests plus the remote key ("" when absent).
+        """
+        digest = self.check_digest(item, bridge, callback)
+        key = self.client.api.find_remote_media_by_hash(bytes.fromhex(digest["sha1"]))
+        return {**digest, "remote_key": key or ""}
+
+    def process(self, item, bridge, callback):
+        self.check(callback)
+        from gpmc.protocol import Protocol
+        from types import SimpleNamespace
+        task=item.get('task_id','')
+        if not re.fullmatch(r'[a-zA-Z0-9-]{1,100}',task):
+            from gpmc.exceptions import ProtocolError
+            raise ProtocolError('INVALID_ARGUMENT')
+        staging=self.home/'ordinary-staging'
+        staging.mkdir(exist_ok=True)
+        receipt=staging/(task+'.receipt')
+        receipt_digest=staging/(task+'.digest.json')
+        fence=staging/(task+'.submitted')
+        protocol=Protocol(SimpleNamespace(api=self.client.api,staging=staging))
+        with diag.operation("source_open"):
+            handle = bridge.open(item["uri"], item["name"])
+        diag.emit("resource.opened", {"source_size": int(handle.getSize())})
+        try:
+            path = str(handle.getPath())
+            digest = self.hashes(path, callback)
+            result = {**digest, "remote_key": item.get("remote_key", ""), "origin": item.get("origin", "")}
+            if item.get("sha256") and digest["sha256"] != item["sha256"]:
+                return {**result, "state": "failed", "error": "SOURCE_CHANGED"}
+            if digest["size"] != int(handle.getSize()):
+                return {**result, "state": "failed", "error": "SOURCE_CHANGED"}
+            self.emit(callback,"waiting_content")
+            with diag.observed_lock(self.content_locks[int(digest["sha1"][:8],16) % len(self.content_locks)], "content_lock"):
+                self.emit(callback, "checking", 0, digest["size"])
+                if item.get("lookup_fresh"):
+                    # The core flow already looked this content up (lookup ->
+                    # decide_prepare); that result is authoritative and is
+                    # not derived a second time here. "" means "not found".
+                    remote = item.get("lookup_remote_key") or None
+                else:
+                    remote = self.client.api.find_remote_media_by_hash(bytes.fromhex(digest["sha1"]))
+                if remote:
+                    result.update(remote_key=remote, origin=result["origin"] or "content_exists")
+                elif fence.exists() or item.get("remote_key"):
+                    return {**result, "state": "waiting_confirmation", "error": "REMOTE_NOT_VISIBLE"}
+                else:
+                    if item.get("same_name"):
+                        self.synchronize(callback)
+                        with closing(sqlite3.connect(self.db_path)) as db, db:
+                            candidates = [json.loads(row[0]) for row in db.execute("SELECT payload FROM cloud")]
+                        if any(x.get("name") == item["name"] for x in candidates):
+                            return {**result, "state": "filename_skipped", "error": "FILENAME_ONLY"}
+                    maximum = max(0, min(10, int(item.get("retries", 3))))
+                    for attempt in range(maximum + 1):
+                        try:
+                            self.check(callback)
+                            if fence.exists():
+                                remote=self.client.api.find_remote_media_by_hash(bytes.fromhex(digest['sha1']))
+                                if not remote:return {**result,'state':'waiting_confirmation','error':'REMOTE_NOT_VISIBLE'}
+                                result.update(remote_key=remote,origin='uploaded');break
+                            if not receipt.exists():
+                                self.emit(callback,'checking')
+                                token = self.client.api.get_upload_token(
+                                    __import__("base64").b64encode(bytes.fromhex(digest["sha1"])).decode(), digest["size"])
+                                with open(path, "rb") as stream:
+                                    self.emit(callback,"uploading",0,digest["size"])
+                                    raw = self.client.api.upload_file(UploadReader(stream, digest["size"],
+                                        lambda current: self.emit(callback, "uploading", current, digest["size"])), token,raw_response=True)
+                                if not raw or len(raw)>4*1024*1024:
+                                    raise ValueError('INVALID_UPLOAD_RESPONSE')
+                                temporary=receipt.with_suffix('.part')
+                                with temporary.open('wb') as output:
+                                    output.write(raw);output.flush();os.fsync(output.fileno())
+                                temporary.replace(receipt)
+                                receipt_digest.write_text(json.dumps(digest),encoding='utf-8')
+                            elif not receipt_digest.exists() or json.loads(receipt_digest.read_text(encoding='utf-8'))!=digest:
+                                from gpmc.exceptions import ProtocolError
+                                raise ProtocolError('SOURCE_CHANGED')
+                            self.check(callback)
+                            # Verify the source again before committing an immutable content hash.
+                            final = self.hashes(path, callback)
+                            if final != digest:
+                                return {**result, "state": "failed", "error": "SOURCE_CHANGED"}
+                            self.emit(callback, "finalizing", digest["size"], digest["size"])
+                            from gpmc.live import LiveProtocol
+                            LiveProtocol(protocol).receipt({'response_path':str(receipt.resolve())})
+                            with fence.open('xb') as output:
+                                output.write(b'submitted');output.flush();os.fsync(output.fileno())
+                            remote=protocol.dispatch('commit_resource',{**digest,'name':item['name'],
+                                'quality':item.get('quality','original'),'response_path':str(receipt.resolve()),
+                                'modified_at':int(item.get('modified',0))//1000 or None})['remote_key']
+                            result.update(remote_key=remote, origin="uploaded")
+                            break
+                        except Exception as error:
+                            code = error_code(error)
+                            if code not in ("NETWORK_ERROR", "RATE_LIMITED") or attempt >= maximum:
+                                raise
+                            diag.emit("retry.scheduled", {"code": code, "retry_attempt": attempt + 1, "retry_limit": maximum, "delay_ms": min(30, 2 ** (attempt + 1))*1000})
+                            self.emit(callback, "retrying", attempt + 1, maximum)
+                            deadline = time.monotonic() + min(30, 2 ** (attempt + 1))
+                            while time.monotonic() < deadline:
+                                self.check(callback); time.sleep(0.2)
+                # Persist the successful upload before any potentially failing album action.
+                if callback:
+                    callback.onEvent(json.dumps({"phase": "uploaded", **result}))
+                if not item.get('retain_submission'):
+                    receipt.unlink(missing_ok=True);fence.unlink(missing_ok=True);receipt_digest.unlink(missing_ok=True)
+                try:
+                    self.check(callback)
+                    self.sync_album(item,result["remote_key"])
+                except Cancelled:
+                    return {**result, "state": "album_pending", "error": "CANCELLED"}
+                except Exception as error:
+                    return {**result, "state": "album_pending", "error": error_code(error)}
+                return {**result, "state": "exists" if result["origin"] == "content_exists" else "done"}
+        finally:
+            handle.close()
+            diag.emit("resource.closed")
+
+    def sync_album(self,item,remote_key):
+        mode, title = item.get('album_mode','none'), item.get('album_value','')
+        if mode=='folder':title=item.get('folder','')
+        if mode=='existing' and title:
+            self.client.add_to_existing_album([remote_key],title)
+        elif mode in ('folder','custom') and title:
+            with diag.observed_lock(self.sync_lock,'sync_lock'):
+                with closing(sqlite3.connect(self.db_path)) as db:
+                    found=db.execute('SELECT album_key FROM albums WHERE title=? ORDER BY album_key LIMIT 1',(title,)).fetchone()
+                if found:self.client.add_to_existing_album([remote_key],found[0])
+                else:
+                    key=self.client.api.create_album(title,[remote_key])
+                    with closing(sqlite3.connect(self.db_path)) as db,db:
+                        db.execute('INSERT OR REPLACE INTO albums VALUES(?,?)',(key,title))
+
+    def pair_result(self,value,resources,key,callback):
+        result={'state':'done','remote_key':key,'photo':resources['photo'],'video':resources['video']}
+        try:
+            self.check(callback)
+            self.sync_album(value,key)
+        except Exception as error:
+            return {**result,'state':'album_pending','error':error_code(error)}
+        return result
+
+    def process_pair(self, value, bridge, callback):
+        """Keep opaque receipts and a durable commit fence until double-hash confirmation."""
+        from types import SimpleNamespace
+        from gpmc.protocol import Protocol
+        from gpmc.media_identity import apple_id
+        folder = self.home / 'pair-staging'
+        folder.mkdir(parents=True, exist_ok=True)
+        task = value.get('task_id', '')
+        if not re.fullmatch(r'[a-zA-Z0-9-]{1,100}', task):
+            raise ValueError('INVALID_ARGUMENT')
+        protocol = Protocol(SimpleNamespace(api=self.client.api, staging=folder))
+        handles=[]
+        try:
+            resources={}
+            identifiers=[]
+            paths={}
+            for role in ('photo','video'):
+                item=value[role]
+                handle=bridge.open(item['uri'],item['name']);handles.append(handle)
+                path=str(handle.getPath());paths[role]=path
+                identifiers.append(apple_id(path, role=='video'))
+                resources[role]={**self.hashes(path,callback), 'name':item['name']}
+            if not identifiers[0] or identifiers[0]!=identifiers[1]:
+                return {'state':'failed','error':'LIVE_PAIR_METADATA_MISMATCH'}
+            if value.get('strategy') == 'motion':
+                from gpmc.motion_photo import mux_motion, motion_format
+                extension=motion_format(paths['photo'])
+                destination=folder/(task+'.motion.'+extension)
+                sources=folder/(task+'.motion.sources.json')
+                expected={'photo':resources['photo']['sha256'],'video':resources['video']['sha256'],'keyframe_us':value.get('keyframe_us')}
+                temporary=folder/(task+'.motion.part')
+                temporary.unlink(missing_ok=True)
+                if (self.home/'ordinary-staging'/(task+'-motion.receipt')).exists() or (self.home/'ordinary-staging'/(task+'-motion.submitted')).exists():
+                    if not destination.exists() or not sources.exists() or json.loads(sources.read_text(encoding='utf-8'))!=expected:
+                        return {'state':'failed','error':'SOURCE_CHANGED'}
+                else:
+                    try:
+                        mux_motion(paths['photo'],paths['video'],temporary,value.get('keyframe_us'))
+                        for role in ('photo','video'):
+                            if self.hashes(paths[role],callback)!={key:resources[role][key] for key in ('sha1','sha256','size')}:
+                                return {'state':'failed','error':'SOURCE_CHANGED'}
+                        temporary.replace(destination)
+                        sources.write_text(json.dumps(expected),encoding='utf-8')
+                    finally:temporary.unlink(missing_ok=True)
+                result=self.process({'task_id':task+'-motion','retain_submission':True,'uri':destination.as_uri(),'name':Path(value['photo']['name']).stem+'_MP.'+extension,
+                    'quality':value.get('quality','original'),'album_mode':'none','modified':value.get('modified',0),'retries':value.get('retries',3)},bridge,callback)
+                if result.get('state') in ('done','exists','album_pending'):
+                    key=self.client.api.find_remote_media_by_hash(bytes.fromhex(result['sha1']))
+                    if key:
+                        destination.unlink(missing_ok=True);sources.unlink(missing_ok=True)
+                        for suffix in ('.receipt','.submitted','.digest.json'):
+                            (self.home/'ordinary-staging'/(task+'-motion'+suffix)).unlink(missing_ok=True)
+                        return self.pair_result(value,resources,key,callback)
+                return {'state':'waiting_confirmation','error':'PAIR_CONFIRMATION_PENDING'}
+            self.emit(callback,'confirming')
+            status=protocol.dispatch('confirm_pair',resources)
+            fence=folder/(task+'.submitted')
+            route='reconcile' if value.get('strategy')=='stepwise' else 'joint'
+            if not status['confirmed'] and not fence.exists():
+                for role in ('photo','video'):
+                    self.check(callback)
+                    resource=resources[role]
+                    receipt=folder/(task+'.'+role+'.receipt')
+                    if not receipt.exists():
+                        self.emit(callback,'checking')
+                        token=self.client.api.get_upload_token(base64.b64encode(bytes.fromhex(resource['sha1'])).decode(),resource['size'])
+                        with open(paths[role],'rb') as stream:
+                            self.emit(callback,'uploading',0,resource['size'])
+                            raw=self.client.api.upload_file(UploadReader(stream,resource['size'],lambda current:self.emit(callback,'uploading',current,resource['size'])),token,raw_response=True)
+                        temporary=receipt.with_suffix('.part');temporary.write_bytes(raw);temporary.replace(receipt)
+                    resource['response_path']=str(receipt.resolve())
+                    if self.hashes(paths[role],callback)!={key:resource[key] for key in ('sha1','sha256','size')}:
+                        return {'state':'failed','error':'SOURCE_CHANGED'}
+                payload={**resources,'route':route,'quality':value.get('quality','original'),
+                    'created_at':int(value.get('created',0))//1000,'modified_at':int(value.get('modified',0))//1000}
+                self.emit(callback,'finalizing')
+                if route=='reconcile':
+                    photo_fence=folder/(task+'.photo-submitted')
+                    photo_status=protocol.dispatch('confirm_resource',resources['photo'])
+                    if not photo_status['confirmed']:
+                        if photo_fence.exists():
+                            # A lost response cannot authorize another photo commit.
+                            return {'state':'waiting_confirmation','error':'PAIR_CONFIRMATION_PENDING'}
+                        with photo_fence.open('xb') as output:
+                            output.write(b'submitted');output.flush();os.fsync(output.fileno())
+                        protocol.dispatch('commit_pair_photo',{**resources['photo'],'quality':payload['quality']})
+                # Write before calling commit; an ambiguous response is queried, never blindly re-submitted.
+                with fence.open('xb') as output:
+                    output.write(b'submitted');output.flush();os.fsync(output.fileno())
+                protocol.dispatch('pair_apple',payload)
+                self.emit(callback,'confirming')
+                status=protocol.dispatch('confirm_pair',resources)
+            if not status['confirmed']:
+                return {'state':'waiting_confirmation','error':'PAIR_CONFIRMATION_PENDING'}
+            for role in ('photo','video'):
+                resources[role]['remote_key']=status['remote_key']
+                (folder/(task+'.'+role+'.receipt')).unlink(missing_ok=True)
+            return self.pair_result(value,resources,status['remote_key'],callback)
+        finally:
+            for handle in handles:handle.close()
+
+    def _consume(self, response, snapshot_id=""):
+        token, resume, _, deleted = parse_db_update(response)
+        root = response.get("1", {})
+        raw_items = root.get("2", [])
+        if isinstance(raw_items, dict): raw_items = [raw_items]
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            for raw in raw_items:
+                if not isinstance(raw, dict): continue
+                try:
+                    from gpmc.db_update_parser import _parse_media_item, _get_nested
+                    item = _parse_media_item(raw)
+                    details = raw.get("2", {})
+                    trash_section = details.get("16")
+                    # The wire decoder represents an empty optional submessage as b''/''.
+                    # Missing section, malformed timestamps and unrecognized shapes stay unknown.
+                    empty_trash_marker = (isinstance(trash_section, (bytes, str)) and len(trash_section) == 0) or (
+                        isinstance(trash_section, dict) and "3" not in trash_section)
+                    # Preserve field presence separately from values. An absent marker may
+                    # only be interpreted with a complete, fresh library snapshot below.
+                    payload = {"key": item.media_key, "dedup": item.dedup_key, "name": item.file_name, "size": known_integer(details.get("10")),
+                        "original": item.is_original_quality if _get_nested(details, "35", "3") is not None else None,
+                        "trash": known_integer(_get_nested(details,"16","3")),
+                        "trash_marker_absent": empty_trash_marker, "snapshot_id": snapshot_id,
+                        "trash_shape": type(trash_section).__name__,
+                        "status": known_integer(details.get("11")), "origin": item.origin,
+                        "quota": known_integer(_get_nested(details, "35", "2"))}
+                    db.execute("INSERT OR REPLACE INTO cloud VALUES(?,?)", (item.media_key, json.dumps(payload)))
+                except (TypeError, ValueError, KeyError, RuntimeError):
+                    continue
+            for key in deleted:
+                db.execute("DELETE FROM cloud WHERE media_key=?", (key,))
+                db.execute("DELETE FROM albums WHERE album_key=?", (key,))
+            collections = root.get("3", [])
+            if isinstance(collections, dict): collections = [collections]
+            for collection in collections:
+                if not isinstance(collection, dict): continue
+                title = collection.get("2", {}).get("5") if isinstance(collection.get("2"), dict) else None
+                key = collection.get("1")
+                if isinstance(title, bytes): title = title.decode("utf-8", errors="replace")
+                if isinstance(key, bytes): key = key.decode("utf-8", errors="replace")
+                if isinstance(title, str) and isinstance(key, str):
+                    db.execute("INSERT OR REPLACE INTO albums VALUES(?,?)", (key, title))
+        return token, resume
+
+    def synchronize(self, callback=None, full=False):
+        with diag.observed_lock(self.sync_lock, "sync_lock"):
+            with closing(sqlite3.connect(self.db_path)) as db, db:
+                token, ready = db.execute("SELECT token,ready FROM state WHERE id=1").fetchone()
+            if full: token, ready = "", False
+            snapshot_id = uuid.uuid4().hex if not ready else ""
+            if not ready:
+                self.full_snapshot_id = ""
+                with closing(sqlite3.connect(self.db_path)) as db, db:
+                    db.execute("UPDATE state SET token='',ready=0 WHERE id=1")
+                    db.execute("DELETE FROM cloud")
+            for cycle in range(10):
+                self.check(callback)
+                with self.measured("sync_requests"):
+                    response = self.client.api.get_library_state(token if ready else "")
+                new_token, resume = self._consume(response, snapshot_id)
+                more = self.client._should_trigger_next_sync(response)
+                seen = set()
+                while resume:
+                    self.emit(callback, "cloud_check")
+                    if resume in seen: raise RuntimeError("SYNC_CYCLE")
+                    seen.add(resume)
+                    with self.measured("sync_requests"):
+                        response = self.client.api.get_library_page(resume, token) if ready else self.client.api.get_library_page_init(resume)
+                    page_token, resume = self._consume(response, snapshot_id)
+                    new_token = page_token or new_token
+                self.check(callback)
+                token = new_token or token
+                if not token: raise RuntimeError("SYNC_TOKEN_MISSING")
+                if not more:
+                    with closing(sqlite3.connect(self.db_path)) as db, db:
+                        db.execute("UPDATE state SET token=?,ready=1 WHERE id=1", (token,))
+                    if snapshot_id:
+                        self.full_snapshot_id = snapshot_id
+                        self.full_snapshot_at = time.monotonic()
+                    return
+                ready = True
+            raise RuntimeError("SYNC_INCOMPLETE")
+
+    def reconcile(self, values, callback=None):
+        self.synchronize(callback)
+        missing = []
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            for key in values.get("keys", []):
+                row = db.execute("SELECT payload FROM cloud WHERE media_key=?", (key,)).fetchone()
+                if row is None or json.loads(row[0]).get("trash") not in (None, 0):
+                    missing.append(key)
+        return {"missing": missing}
+
+    def albums(self, callback=None):
+        self.synchronize(callback)
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            return [{"id": key, "name": title} for key, title in db.execute("SELECT album_key,title FROM albums ORDER BY title")]
+
+    @staticmethod
+    def allowed_url(url):
+        from gpmc.media_access import allowed_url
+        return allowed_url(url)
+
+    def original_access(self, key, expected_size, callback=None):
+        from gpmc.media_access import original_access
+        return original_access(self.client.api, key, expected_size,
+                               checkpoint=lambda: self.check(callback), measured=self.measured)
+
+    def verify_cleanup(self, item, bridge, callback):
+        digest = self.check_digest(item, bridge, callback)
+        if item.get("sha256") and item["sha256"] != digest["sha256"]:
+            return {"eligible": False, "reason": "SOURCE_CHANGED", **digest}
+        with self.measured("content_query"):
+            key = self.client.api.find_remote_media_by_hash(bytes.fromhex(digest["sha1"]))
+        if not key: return {"eligible": False, "reason": "REMOTE_MISSING", **digest}
+        if item.get("check_mode") == "quick":
+            return {"eligible": False, "found": True, "reason": "STATUS_ONLY", "remote_key": key, **digest}
+        state = item.get("check_cloud_state", True)
+        access = item.get("check_original_access", True)
+        if not isinstance(state, bool) or not isinstance(access, bool):
+            raise ValueError("INVALID_CHECK_POLICY")
+        policy = "full" if state and access else "state_only" if state else "access_only" if access else "basic"
+        if state:
+            with closing(sqlite3.connect(self.db_path)) as db, db:
+                row = db.execute("SELECT payload FROM cloud WHERE media_key=?", (key,)).fetchone()
+            if not row: return {"eligible": False, "reason": "CLOUD_ITEM_MISSING", **digest}
+            cloud = json.loads(row[0])
+            if not self.full_snapshot_id or cloud.get("snapshot_id") != self.full_snapshot_id or not 0 <= time.monotonic() - self.full_snapshot_at < 300:
+                return {"eligible": False, "reason": "CLOUD_STATE_UNKNOWN", **digest}
+            trash = cloud.get("trash")
+            if trash is None and cloud.get("trash_marker_absent") is True:
+                # Verified against this protocol: normal -> empty marker, trashed -> timestamp,
+                # restored -> empty marker. This applies only to a fresh COMPLETE snapshot.
+                trash = 0
+            if trash is None: return {"eligible": False, "reason": "CLOUD_TRASH_UNKNOWN", **digest}
+            if trash != 0: return {"eligible": False, "reason": "REMOTE_TRASHED", **digest}
+            if cloud["original"] is None: return {"eligible": False, "reason": "CLOUD_QUALITY_UNKNOWN", **digest}
+            if cloud["status"] != 100: return {"eligible": False, "reason": "CLOUD_PROCESSING", **digest}
+            if cloud["original"] is not True or cloud["size"] != digest["size"]:
+                return {"eligible": False, "reason": "ORIGINAL_UNCONFIRMED", **digest}
+        if access:
+            try:
+                accessible = self.original_access(key, digest["size"], callback)
+            except requests.exceptions.RequestException as error:
+                code = error_code(error)
+                if code == "LOGIN_REQUIRED": raise
+                return {"eligible": False, "reason": "RATE_LIMITED" if code == "RATE_LIMITED" else "ORIGINAL_NETWORK_ERROR", **digest}
+            if not accessible:
+                return {"eligible": False, "reason": "ORIGINAL_UNAVAILABLE", **digest}
+        return {"eligible": True, "reason": "", "remote_key": key, "policy": policy, **digest}
+
+    def account_profile(self, callback=None):
+        """Optional identity display, using only the existing Photos bearer token."""
+        self.check(callback)
+        def bounded(response, limit):
+            if response.status_code != 200: return None
+            data = bytearray()
+            for chunk in response.iter_content(8192):
+                self.check(callback)
+                data.extend(chunk)
+                if len(data) > limit: return None
+            return bytes(data)
+        with requests.Session() as session:
+            with session.get("https://openidconnect.googleapis.com/v1/userinfo",
+                    headers={"Authorization": "Bearer " + self.client.api.bearer_token},
+                    timeout=(3, 5), allow_redirects=False, stream=True) as response:
+                body = bounded(response, 65536)
+            if body is None: return {"available": False}
+            profile = json.loads(body)
+            subject = profile.get("sub")
+            if not isinstance(subject, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,255}", subject): return {"available": False}
+            email = profile.get("email")
+            if email is not None and (not isinstance(email, str) or email.strip().lower() != self.account): return {"available": False}
+            name = profile.get("name", "")
+            name = name.strip() if isinstance(name, str) else ""
+            if len(name) > 100 or any(ord(c) < 32 for c in name): name = ""
+            result = {"available": True, "account": self.account, "subject": subject, "name": name}
+            url = profile.get("picture", "")
+            parsed = urlparse(url) if isinstance(url, str) else None
+            if parsed and parsed.scheme == "https" and not parsed.username and not parsed.password and parsed.port in (None,443) and parsed.hostname and (parsed.hostname == "googleusercontent.com" or parsed.hostname.endswith(".googleusercontent.com")):
+                self.check(callback)
+                # No Authorization header, cookies, redirects or original URL in the result.
+                # Use a fresh session so the identity request cannot contribute cookies.
+                try:
+                    with requests.Session() as images:
+                        with images.get(url, timeout=(3,5), allow_redirects=False, stream=True) as response:
+                            image = bounded(response, 512 * 1024) if response.headers.get("Content-Type", "").lower().startswith("image/") else None
+                    if image: result["avatar_base64"] = base64.b64encode(image).decode("ascii")
+                except requests.exceptions.RequestException:
+                    pass
+            return result
+
+
+    def dispatch(self, action, payload, bridge=None, callback=None):
+        self.timing_context.values = {}
+        try:
+            with self.measured("engine_total"):
+                values=json.loads(payload) if isinstance(payload,str) else payload
+                with protection.operation(action,values,callback):
+                    result = json.loads(self._dispatch(action, values, bridge, callback))
+            result["_metrics"] = self.timing_context.values
+            return json.dumps(result)
+        except Exception as error:
+            return json.dumps({'ok':False,'error':error_code(error)})
+        finally:
+            self.timing_context.values = None
+
+    def _dispatch(self, action, payload, bridge=None, callback=None):
+        try:
+            with self.operation(action in ("connect", "logout")):
+                values = json.loads(payload) if isinstance(payload, str) else payload
+                if action == "logout":
+                    with diag.observed_lock(self.connection_lock, "connection_lock"):
+                        self.client = None; self.credential = ""; self.account = ""
+                    return json.dumps({"ok": True})
+                if action == "connect": return json.dumps({"ok": True, **self.connect(values["credential"], values.get("timeout",60), values.get("proxy", ""))})
+                if action == "media_identity":
+                    from gpmc.media_identity import apple_id, has_still_image_time
+                    from gpmc.motion_photo import has_embedded_motion
+                    handle = bridge.open(values["uri"], values["name"])
+                    try:
+                        result = apple_id(str(handle.getPath()), values.get("video", False))
+                        keyframe = has_still_image_time(str(handle.getPath())) if values.get("video", False) else False
+                        embedded = has_embedded_motion(str(handle.getPath())) if not values.get("video", False) else False
+                    finally: handle.close()
+                    return json.dumps({"ok": True, "identifier": result or "", "still_image_time": keyframe, "embedded_motion": embedded})
+                if self.client is None: return json.dumps({"ok": False, "error": "LOGIN_REQUIRED"})
+                if values.get("_account", self.account) != self.account:
+                    return json.dumps({"ok": False, "error": "ACCOUNT_CHANGED"})
+                if action == "process": result = self.process(values,bridge,callback)
+                elif action == "process_pair": result = self.process_pair(values,bridge,callback)
+                elif action == "motion_status":
+                    from types import SimpleNamespace
+                    from gpmc.protocol import Protocol
+                    result=Protocol(SimpleNamespace(api=self.client.api)).dispatch('motion_status',values)
+                elif action == "lookup": result = self.lookup(values,bridge,callback)
+                elif action == "synchronize":
+                    with self.measured("cloud_sync"):
+                        self.synchronize(callback, values.get("full", False))
+                    result = {}
+                elif action == "reconcile": result = self.reconcile(values,callback)
+                elif action == "albums": result = {"albums": self.albums(callback)}
+                elif action == "sync_album":
+                    self.check(callback)
+                    self.sync_album(values,values['remote_key'])
+                    result = {}
+                elif action == "verify_cleanup": result = self.verify_cleanup(values,bridge,callback)
+                elif action == "account_profile": result = self.account_profile(callback)
+                elif action == "fingerprint":
+                    handle = bridge.open(values["uri"],values["name"])
+                    try: result = self.hashes(str(handle.getPath()),callback)
+                    finally: handle.close()
+                else: return json.dumps({"ok": False, "error": "UNKNOWN_OPERATION"})
+                return json.dumps({"ok": True, **result})
+        except Exception as error:
+            diag.emit("error.captured", {"code": error_code(error), **diag.safe_error(error)})
+            return json.dumps({"ok": False, "error": error_code(error)})
