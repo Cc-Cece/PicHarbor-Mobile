@@ -13,8 +13,8 @@ android {
         applicationId = "com.cccece.picharbor.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.0.0-alpha.3"
+        versionCode = 4
+        versionName = "2.0.0-alpha.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
     }

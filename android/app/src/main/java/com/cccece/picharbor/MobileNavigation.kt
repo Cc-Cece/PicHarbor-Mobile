@@ -18,4 +18,4 @@ enum class MobilePage(val route:String) {
     }
 }
 
-data class MobileNavigationEntry(val page:MobilePage,val media:String="",val item:String="",val job:String="",val profile:String="",val status:String="all",val archived:Boolean=false)
+data class MobileNavigationEntry(val page:MobilePage,val media:String="",val item:String="",val job:String="",val profile:String="",val status:String="all",val archived:Boolean=false,val key:String=java.util.UUID.randomUUID().toString())

@@ -53,7 +53,7 @@ fun UnifiedSettingsScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()-
             SettingsRow("相册访问",icon=Icons.Outlined.PhotoLibrary,onClick={vm.navigate("permissions")})
             SettingsRow("Android 后台运行设置",icon=Icons.Outlined.BatteryChargingFull,onClick={vm.navigate("background-settings")})
         }
-        ProductSection {ProductAction("恢复备份默认设置",enabled=!vm.busy){restore=true}}
+        ProductSection {ProductAction("恢复备份默认设置",enabled=!vm.busy,destructive=true){restore=true}}
         ProductSection {
             SettingsRow("诊断",icon=Icons.Outlined.BugReport,onClick={vm.navigate("diagnostics")})
             SettingsRow("关于 PicHarbor",icon=Icons.Outlined.Info,onClick={vm.navigate("about")})
@@ -66,21 +66,23 @@ fun UnifiedSettingsScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()-
 fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) {
     var source by rememberSaveable{mutableStateOf(if(archived)data.settings.archiveSource else data.settings.activitySource)}
     var status by rememberSaveable{mutableStateOf(if(archived)"completed" else data.settings.activityStatus)}
-    var menu by remember{mutableStateOf(false)}
-    var remove by remember{mutableStateOf(false)}
-    var selecting by remember{mutableStateOf(false)}
-    var selected by remember{mutableStateOf(setOf<String>())}
+    var menu by remember(data.settings.account,archived){mutableStateOf(false)}
+    var remove by remember(data.settings.account,archived){mutableStateOf(false)}
+    var selecting by rememberSaveable(data.settings.account,archived){mutableStateOf(false)}
+    var selected by remember(data.settings.account,archived){mutableStateOf(setOf<String>())}
     var limit by rememberSaveable{mutableIntStateOf(200)}
     LaunchedEffect(source,status){vm.graph.preferences.string(if(archived)"archiveSource" else "activitySource",source);if(!archived)vm.graph.preferences.string("activityStatus",status)}
     val allItems=remember(data.items){data.items.filter{!it.hidden}.groupBy{it.jobId}}
     val visible=remember(allItems,archived,status){allItems.mapValues{(_,rows)->rows.filter{(it.archivedAt>0)==archived&&(status=="all"||(it.state in setOf("done","exists"))==(status=="completed")&&it.state!="cancelled")}}}
-    val jobs=data.jobs.filter{!it.hidden&&(source=="all"||it.automatic==(source=="automatic"))&&!visible[it.id].isNullOrEmpty()}
-    val matchingItems=jobs.flatMap{visible[it.id].orEmpty()}
-    val pending=matchingItems.filter{it.state !in setOf("done","exists","cancelled")}.map{it.id}
-    val paused=matchingItems.filter{it.state=="paused"}.map{it.id}
-    val retryable=matchingItems.filter{it.state in setOf("failed","album_pending","waiting_confirmation")}.map{it.id}
-    val complete=jobs.filter{visible[it.id].orEmpty().any{it.state in setOf("done","exists")}}.map{it.id}
-    val archivable=jobs.flatMap{visible[it.id].orEmpty()}.filter{it.state in setOf("done","exists")}
+    val jobs=remember(data.jobs,visible,source){data.jobs.filter{!it.hidden&&(source=="all"||it.automatic==(source=="automatic"))&&!visible[it.id].isNullOrEmpty()}}
+    val locale=androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val formatter=remember(locale){java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.SHORT).withLocale(locale).withZone(java.time.ZoneId.systemDefault())}
+    val matchingItems=remember(jobs,visible){jobs.flatMap{visible[it.id].orEmpty()}}
+    val pending=remember(jobs,visible){matchingItems.filter{it.state !in setOf("done","exists","cancelled")}.map{it.id}}
+    val paused=remember(jobs,visible){matchingItems.filter{it.state=="paused"}.map{it.id}}
+    val retryable=remember(jobs,visible){matchingItems.filter{it.state in setOf("failed","album_pending","waiting_confirmation")}.map{it.id}}
+    val complete=remember(jobs,visible){jobs.filter{visible[it.id].orEmpty().any{it.state in setOf("done","exists")}}.map{it.id}}
+    val archivable=remember(jobs,visible){jobs.flatMap{visible[it.id].orEmpty()}.filter{it.state in setOf("done","exists")}}
     Column(Modifier.fillMaxSize()) {
         PageTitle(if(archived)"归档记录" else "活动",vm,!archived) {
             Box {TextButton(onClick={menu=true}){LIcon(Icons.Outlined.MoreHoriz,"活动选项");LText("更多")}
@@ -109,7 +111,7 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
                         AsyncImage(matching.firstOrNull()?.mediaId,null,Modifier.size(52.dp),contentScale=ContentScale.Crop)
                         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                             LText(if(all.size>1)"备份批次 · ${all.size} 项" else matching.firstOrNull()?.name.orEmpty(),localize=all.size>1,style=MaterialTheme.typography.titleMedium)
-                            LText(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.SHORT).withLocale(androidx.compose.ui.platform.LocalConfiguration.current.locales[0]).withZone(java.time.ZoneId.systemDefault()).format(java.time.Instant.ofEpochMilli(job.created)),localize=false,style=MaterialTheme.typography.bodySmall)
+                            LText(formatter.format(java.time.Instant.ofEpochMilli(job.created)),localize=false,style=MaterialTheme.typography.bodySmall)
                             LText("${all.size} 项 · 已完成 ${all.count{it.state in setOf("done","exists")}} 项",style=MaterialTheme.typography.bodySmall)
                             if(all.size==1)LText(phaseLabel(matching.first().state),style=MaterialTheme.typography.labelSmall)
                             if(matching.size!=all.size)LText("当前筛选 ${matching.size} 项",style=MaterialTheme.typography.bodySmall)
@@ -122,27 +124,36 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
         }
     }
     if(remove)AlertDialog(onDismissRequest={remove=false},title={LText("移除未完成任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={remove=false;vm.itemActions(pending,"remove")}){LText("停止并移除")}},dismissButton={TextButton(onClick={remove=false}){LText("取消")}})
-    if(selecting)AlertDialog(onDismissRequest={selecting=false},title={LText(if(archived)"选择取消归档" else "选择归档")},text={Column(Modifier.verticalScroll(rememberScrollState())){archivable.forEach{item->Row(verticalAlignment=Alignment.CenterVertically){Checkbox(item.id in selected,onCheckedChange={selected=if(it)selected+item.id else selected-item.id});LText(item.name,localize=false)}}}},confirmButton={TextButton(onClick={vm.archiveSelected(selected.toList(),archived);selecting=false},enabled=selected.isNotEmpty()){LText("完成")}},dismissButton={TextButton(onClick={selecting=false}){LText("取消")}})
+    if(selecting)AlertDialog(
+        onDismissRequest={selecting=false},title={LText(if(archived)"选择取消归档" else "选择归档")},
+        text={LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp)) {
+            items(archivable,key={it.id}){item->
+                NativeCheckRow(item.name,item.id in selected,localized=false){selected=if(it)selected+item.id else selected-item.id}
+            }
+        }},
+        confirmButton={TextButton(onClick={vm.archiveSelected(archivable.filter{it.id in selected}.map{it.id},archived);selecting=false},enabled=!vm.busy&&archivable.any{it.id in selected}){LText("完成")}},
+        dismissButton={TextButton(onClick={selecting=false}){LText("取消")}}
+    )
 }
 
 @Composable
 fun ProxyScreen(vm:HarborViewModel,data:HarborUiData) {
     val proxy=vm.graph.proxy;val library by proxy.library.collectAsState();val testing by proxy.testing.collectAsState();val health by proxy.health.collectAsState();val message by proxy.message.collectAsState()
     ProductPage("应用内代理",vm) {
-        ProductSection(footer="仅用于 PicHarbor 连接 Google，不影响其他应用。") {ToggleRow("仅代理 PicHarbor","",data.settings.proxyEnabled,enabled=!vm.busy){vm.setBoolean("proxyEnabled",it)}}
+        ProductSection(footer="仅用于 PicHarbor 连接 Google，不影响其他应用。") {ToggleRow("仅代理 PicHarbor","",data.settings.proxyEnabled,enabled=!vm.busy&&!testing){vm.setBoolean("proxyEnabled",it)}}
         ProductSection {
             SettingsRow("配置与订阅",icon=Icons.Outlined.List,onClick={vm.navigate("proxy-profiles")})
             proxy.profile()?.let{ProductValue("正在使用",it.getString("name"),false);ProductValue("节点数量",it.getJSONArray("nodes").length().toString())}
         }
         ProductSection("节点选择与切换","任务可单独设置。测速不会中断正在上传的文件；仅在允许时使用直连。") {
-            ProductPicker("节点选择",library.optString("selection","automatic"),listOf("automatic" to "自动","manual" to "手动"),!vm.busy){value->vm.proxyAction{proxy.policy("selection",value)}}
+            ProductPicker("节点选择",library.optString("selection","automatic"),listOf("automatic" to "自动","manual" to "手动"),!vm.busy&&!testing){value->vm.proxyAction{proxy.policy("selection",value)}}
             val names=proxy.profile()?.getJSONArray("nodes")?.let{array->(0 until array.length()).map{array.getJSONObject(it).getString("name")}}.orEmpty()
             if(library.optString("selection")=="manual") {
-                ProductPicker("主节点",library.optString("primary"),names.map{it to it},!vm.busy){value->vm.proxyAction{proxy.policy("primary",value)}}
+                ProductPicker("主节点",library.optString("primary"),names.map{it to it},!vm.busy&&!testing){value->vm.proxyAction{proxy.policy("primary",value)}}
                 val backups=library.optJSONArray("backups")?.let{a->(0 until a.length()).map{a.getString(it)}}.orEmpty()
-                names.filter{it!=library.optString("primary")}.forEach{name->ToggleRow(name,"备用节点",name in backups,enabled=!vm.busy){checked->vm.proxyAction{proxy.backups(if(checked)backups+name else backups-name)}}}
+                names.filter{it!=library.optString("primary")}.forEach{name->NativeCheckRow(name,name in backups,enabled=!vm.busy&&!testing,localized=false){checked->vm.proxyAction{proxy.backups(if(checked)backups+name else backups-name)}}}
             } else LText("优先保持正常连接，失败后结合延时和近期表现选择其他节点。",modifier=Modifier.padding(16.dp))
-            ToggleRow("所有节点不可用时允许直连","关闭时等待连接，不自动绕过代理",library.optString("exhaustion")=="direct",enabled=!vm.busy){allowed->vm.proxyAction{proxy.policy("exhaustion",if(allowed)"direct" else "wait")}}
+            ToggleRow("所有节点不可用时允许直连","关闭时等待连接，不自动绕过代理",library.optString("exhaustion")=="direct",enabled=!vm.busy&&!testing){allowed->vm.proxyAction{proxy.policy("exhaustion",if(allowed)"direct" else "wait")}}
         }
         ProductSection {
             if(testing){LinearProgressIndicator(Modifier.fillMaxWidth());ProductAction("停止测速",onClick=proxy::cancelTest)}
@@ -180,9 +191,10 @@ fun ProxyProfilesScreen(vm:HarborViewModel,data:HarborUiData) {
 
 @Composable
 fun ProxyEditorScreen(vm:HarborViewModel,data:HarborUiData) {
+    val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
     val focus=LocalFocusManager.current
     var revealAddress by remember{mutableStateOf(false)}
-    var name by remember{mutableStateOf("")};var address by remember{mutableStateOf("")};var text by remember{mutableStateOf("")};var paste by remember{mutableStateOf(false)}
+    var name by rememberSaveable{mutableStateOf("")};var address by remember{mutableStateOf("")};var text by remember{mutableStateOf("")};var paste by remember{mutableStateOf(false)}
     LaunchedEffect(vm.scanResults){if(vm.scanPurpose=="proxy"&&vm.scanResults.size==1){address=vm.scanResults.first();vm.clearScan()}}
     ProductPage("添加订阅",vm) {
         ProductSection(footer="链接仅保存在本机，不加入诊断报告。") {
@@ -192,12 +204,19 @@ fun ProxyEditorScreen(vm:HarborViewModel,data:HarborUiData) {
                 trailingIcon={IconButton(onClick={revealAddress=!revealAddress}){LIcon(if(revealAddress)Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,if(revealAddress)"隐藏订阅地址" else "显示订阅地址")}},modifier=Modifier.fillMaxWidth().padding(12.dp))
         }
         ProductSection {
-            ProductAction("下载并添加",enabled=!vm.busy&&address.isNotBlank()){vm.proxyAction{vm.graph.proxy.download(address,name);address="";vm.back()}}
+            ProductAction("下载并添加",enabled=!vm.busy&&address.isNotBlank()){val origin=vm.pageKey;val submittedAddress=address;val submittedName=name;vm.proxyAction{vm.graph.proxy.download(submittedAddress,submittedName);address="";vm.backFrom(origin)}}
             ProductAction("扫描二维码",enabled=!vm.busy){vm.scanQr("proxy",false)}
             ProductAction("从图片识别",enabled=!vm.busy){vm.scanQr("proxy",true)}
             if(vm.scanPurpose=="proxy"&&vm.scanResults.size>1)vm.scanResults.forEachIndexed{i,value->ProductAction("订阅 ${i+1}"){address=value;vm.clearScan()}}
-            ProductAction("粘贴配置"){paste=!paste}
-            if(paste){OutlinedTextField(text,{text=it},label={LText("Clash YAML / JSON")},minLines=4,maxLines=8,modifier=Modifier.fillMaxWidth().padding(12.dp));ProductAction("保存配置",enabled=!vm.busy&&text.isNotBlank()){vm.proxyAction{vm.graph.proxy.importText(text,name);text="";vm.back()}}}
+            ProductAction("粘贴配置",enabled=!vm.busy){
+                paste=true
+                runCatching{clipboard.getText()?.text}.onSuccess{value->
+                    if(value.isNullOrBlank())vm.say("剪贴板没有可用文本，可在下方输入。")
+                    else if(value.toByteArray(Charsets.UTF_8).size>4*1024*1024)vm.say("配置文件过大")
+                    else text=value
+                }.onFailure{vm.say("无法读取剪贴板，可在下方输入。")}
+            }
+            if(paste){OutlinedTextField(text,{text=it},label={LText("Clash YAML / JSON")},minLines=4,maxLines=8,modifier=Modifier.fillMaxWidth().padding(12.dp));ProductAction("保存配置",enabled=!vm.busy&&text.isNotBlank()){val origin=vm.pageKey;val submittedText=text;val submittedName=name;vm.proxyAction{vm.graph.proxy.importText(submittedText,submittedName);text="";vm.backFrom(origin)}}}
         }
     }
 }
@@ -211,12 +230,12 @@ fun ProxyProfileScreen(vm:HarborViewModel,data:HarborUiData) {
         if(profile!=null) {
             ProductSection {ProductValue("配置名称",profile.getString("name"),false);ProductValue("类型",if(profile.optString("url").isEmpty())"本地文件" else "订阅")}
             ProductSection {
-                ProductAction("使用此配置",enabled=!vm.busy&&library.optString("active")!=vm.inspectedProfile){vm.proxyAction{proxy.activate(vm.inspectedProfile)}}
-                if(profile.optString("url").isNotBlank())ProductAction("更新订阅",enabled=!vm.busy){vm.proxyAction{proxy.download(profile.getString("url"),profile.getString("name"),vm.inspectedProfile)}}
-                ProductAction("移除配置",enabled=!vm.busy){remove=true}
+                ProductAction("使用此配置",enabled=!vm.busy&&library.optString("active")!=vm.inspectedProfile){vm.proxyAction{proxy.activate(profile.getString("id"))}}
+                if(profile.optString("url").isNotBlank())ProductAction("更新订阅",enabled=!vm.busy){vm.proxyAction{proxy.download(profile.getString("url"),profile.getString("name"),profile.getString("id"))}}
+                ProductAction("移除配置",enabled=!vm.busy,destructive=true){remove=true}
             }
             ProductSection("节点") {val nodes=profile.getJSONArray("nodes");for(i in 0 until nodes.length())LText(nodes.getJSONObject(i).getString("name"),localize=false,modifier=Modifier.padding(16.dp))}
         } else Helper("配置已不可用")
     }
-    if(remove)AlertDialog(onDismissRequest={remove=false},title={LText("移除此配置？")},confirmButton={TextButton(onClick={remove=false;vm.proxyAction{proxy.remove(vm.inspectedProfile);vm.back()}}){LText("移除")}},dismissButton={TextButton(onClick={remove=false}){LText("取消")}})
+    if(remove)AlertDialog(onDismissRequest={remove=false},title={LText("移除此配置？")},confirmButton={TextButton(onClick={remove=false;val origin=vm.pageKey;val identifier=vm.inspectedProfile;vm.proxyAction{proxy.remove(identifier);vm.backFrom(origin)}}){LText("移除")}},dismissButton={TextButton(onClick={remove=false}){LText("取消")}})
 }

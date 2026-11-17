@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -16,10 +17,10 @@ import coil.compose.AsyncImage
 fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
     val item=data.items.firstOrNull{it.id==vm.inspectedItem&&!it.hidden}
     val job=data.jobs.firstOrNull{it.id==item?.jobId}
-    var remove by remember{mutableStateOf(false)}
-    var cancel by remember{mutableStateOf(false)}
-    var advanced by remember{mutableStateOf(false)}
-    var filename by remember{mutableStateOf(false)}
+    var remove by rememberSaveable(vm.inspectedItem){mutableStateOf(false)}
+    var cancel by rememberSaveable(vm.inspectedItem){mutableStateOf(false)}
+    var advanced by rememberSaveable(vm.inspectedItem){mutableStateOf(false)}
+    var filename by rememberSaveable(vm.inspectedItem){mutableStateOf(false)}
     val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
     ProductPage("任务详情",vm) {
         if(item==null)EmptyState("任务已不可用","返回活动页查看其他任务。",Icons.Outlined.History)
@@ -56,8 +57,8 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
                     if(item.state=="waiting_confirmation")ProductAction("立即检查保存结果",Icons.Outlined.Refresh,!vm.busy){vm.itemAction(item.id,"resume")}
                     else if(item.state in setOf("paused","failed"))ProductAction(if(item.state=="paused")"继续" else "重试",Icons.Outlined.PlayArrow,!vm.busy){vm.itemAction(item.id,"resume")}
                     else ProductAction("暂停",Icons.Outlined.Pause,!vm.busy){vm.itemAction(item.id,"pause")}
-                    ProductAction("取消任务",enabled=!vm.busy){cancel=true}
-                    ProductAction("移除未完成任务",enabled=!vm.busy){remove=true}
+                    ProductAction("取消任务",enabled=!vm.busy,destructive=true){cancel=true}
+                    ProductAction("移除未完成任务",enabled=!vm.busy,destructive=true){remove=true}
                 }
             }
             ProductSection {ProductAction("高级信息",Icons.Outlined.Info){advanced=true}}
@@ -67,6 +68,6 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
         ProductValue("任务标识",item.id,false);ProductValue("文件大小",formatSize(item.bytes));ProductValue("尝试次数",item.attempt.toString())
         if(job!=null){ProductValue("来源",if(job.automatic)"自动" else "手动");ProductValue("上传画质",qualityName(job.quality));ProductValue("Live Photo",livePhotoLabel(job.liveStrategy))}
     }},confirmButton={TextButton(onClick={advanced=false}){LText("完成")}})
-    if(filename&&item!=null)AlertDialog(onDismissRequest={filename=false},title={LText("完整文件名")},text={androidx.compose.foundation.text.selection.SelectionContainer{LText(item.name,localize=false)}},confirmButton={TextButton(onClick={filename=false}){LText("完成")}},dismissButton={TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(item.name))}){LText("复制文件名")}})
-    if((remove||cancel)&&item!=null)AlertDialog(onDismissRequest={remove=false;cancel=false},title={LText(if(remove)"移除此任务？" else "取消任务？")},text={LText("停止处理并保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={vm.itemAction(item.id,if(remove)"remove" else "cancel");remove=false;cancel=false}){LText("确认")}},dismissButton={TextButton(onClick={remove=false;cancel=false}){LText("取消")}})
+    if(filename&&item!=null)AlertDialog(onDismissRequest={filename=false},title={LText("完整文件名")},text={androidx.compose.foundation.text.selection.SelectionContainer{Column(Modifier.verticalScroll(rememberScrollState())){LText(item.name,localize=false)}}},confirmButton={TextButton(onClick={filename=false}){LText("完成")}},dismissButton={TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(item.name))}){LText("复制文件名")}})
+    if((remove||cancel)&&item!=null)AlertDialog(onDismissRequest={remove=false;cancel=false},title={LText(if(remove)"移除此任务？" else "取消任务？")},text={LText("停止处理并保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={vm.itemAction(item.id,if(remove)"remove" else "cancel");remove=false;cancel=false},colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){LText(if(remove)"停止并移除" else "取消任务")}},dismissButton={TextButton(onClick={remove=false;cancel=false}){LText("取消")}})
 }

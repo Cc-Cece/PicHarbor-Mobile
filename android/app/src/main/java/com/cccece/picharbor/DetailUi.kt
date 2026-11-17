@@ -4,6 +4,11 @@ package com.cccece.picharbor
 import android.net.Uri
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -43,7 +48,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
     val status=data.status(media)
     val pair=remember(media,data.media){if(media.video)null else LivePhotoPairing.findPair(media,data.media)}
     var playingLive by remember(media.id){mutableStateOf(false)}
-    var filename by remember{mutableStateOf(false)}
+    var filename by rememberSaveable(media.id){mutableStateOf(false)}
     val context=LocalView.current.context
     val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -53,16 +58,19 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
                 val sources=arrayListOf(Uri.parse(media.id)).apply{if(pair!=null)add(Uri.parse(pair.id))}
                 val intent=if(sources.size>1)android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).setType("*/*").putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM,sources)
                     else android.content.Intent(android.content.Intent.ACTION_SEND).setType(media.mime).putExtra(android.content.Intent.EXTRA_STREAM,sources.first())
-                context.openProductIntent(android.content.Intent.createChooser(intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),""))
+                intent.clipData=android.content.ClipData.newUri(context.contentResolver,media.name,sources.first()).apply{sources.drop(1).forEach{addItem(android.content.ClipData.Item(it))}}
+                if(!context.openProductIntent(android.content.Intent.createChooser(intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),"")))vm.say("暂时无法打开此页面")
             }){LIcon(Icons.Outlined.Share,"分享")}
         })
         if(media.video||playingLive)VideoPlayer(if(playingLive)pair?.id?:media.id else media.id,autoplay=playingLive) else {
             var scale by remember(media.id){mutableFloatStateOf(1f)}
             var x by remember(media.id){mutableFloatStateOf(0f)};var y by remember(media.id){mutableFloatStateOf(0f)}
-            Box(Modifier.fillMaxWidth().height(370.dp).background(Color.Black).clipToBounds().pointerInput(media.id){detectTransformGestures{_,pan,zoom,_->
+            val zoomLabel=localize("放大照片");val resetLabel=localize("重置缩放")
+            Box(Modifier.semantics{customActions=listOf(CustomAccessibilityAction(zoomLabel){scale=(scale+1f).coerceAtMost(5f);true},CustomAccessibilityAction(resetLabel){scale=1f;x=0f;y=0f;true})}
+                .pointerInput(media.id){detectTapGestures(onDoubleTap={scale=if(scale>1f)1f else 2.5f;x=0f;y=0f})}.fillMaxWidth().height(370.dp).background(Color.Black).clipToBounds().pointerInput(media.id){detectTransformGestures{_,pan,zoom,_->
                 scale=(scale*zoom).coerceIn(1f,5f);x=if(scale>1f)(x+pan.x).coerceIn(-size.width*scale/2,size.width*scale/2) else 0f;y=if(scale>1f)(y+pan.y).coerceIn(-size.height*scale/2,size.height*scale/2) else 0f
             }}) {
-                AsyncImage(Uri.parse(media.id),media.name,modifier=Modifier.fillMaxSize().graphicsLayer{scaleX=scale;scaleY=scale;translationX=x;translationY=y},contentScale=ContentScale.Fit)
+                AsyncImage(coil.request.ImageRequest.Builder(LocalContext.current).data(Uri.parse(media.id)).memoryCacheKey("${media.id}:${media.modified}:${media.size}").diskCacheKey("${media.id}:${media.modified}:${media.size}").build(),media.name,modifier=Modifier.fillMaxSize().graphicsLayer{scaleX=scale;scaleY=scale;translationX=x;translationY=y},contentScale=ContentScale.Fit)
             }
         }
         Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(13.dp)) {
@@ -75,7 +83,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
 
         }
     }
-    if(filename)AlertDialog(onDismissRequest={filename=false},title={LText("完整文件名")},text={androidx.compose.foundation.text.selection.SelectionContainer{LText(media.name,localize=false)}},confirmButton={TextButton(onClick={filename=false}){LText("完成")}},dismissButton={TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(media.name))}){LText("复制文件名")}})
+    if(filename)AlertDialog(onDismissRequest={filename=false},title={LText("完整文件名")},text={androidx.compose.foundation.text.selection.SelectionContainer{Column(Modifier.verticalScroll(rememberScrollState())){LText(media.name,localize=false)}}},confirmButton={TextButton(onClick={filename=false}){LText("完成")}},dismissButton={TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(media.name))}){LText("复制文件名")}})
 
 }
 @Composable
@@ -85,15 +93,18 @@ fun VideoPlayer(uri:String,autoplay:Boolean=false) {
     val context=LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
     var error by remember(uri){mutableStateOf(false)}
+    var position by rememberSaveable(uri){mutableLongStateOf(0L)}
     val player=remember(uri){ExoPlayer.Builder(context).build().apply{
         addListener(object:androidx.media3.common.Player.Listener{override fun onPlayerError(value:androidx.media3.common.PlaybackException){error=true}})
-        setMediaItem(MediaItem.fromUri(uri));playWhenReady=autoplay;prepare()
+        setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE).build(),true)
+        setHandleAudioBecomingNoisy(true)
+        setMediaItem(MediaItem.fromUri(uri));seekTo(position);playWhenReady=autoplay;prepare()
     }}
     DisposableEffect(player,lifecycle) {
-        val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_STOP)player.pause()}
+        val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_PAUSE||event==Lifecycle.Event.ON_STOP){position=player.currentPosition;player.pause()}}
         lifecycle.addObserver(observer)
-        onDispose{lifecycle.removeObserver(observer);player.release()}
+        onDispose{position=player.currentPosition;lifecycle.removeObserver(observer);player.release()}
     }
     if(error)Helper("无法预览动态内容，请检查文件与系统格式支持。")
-    AndroidView(factory={PlayerView(it).apply{this.player=player;useController=true}},modifier=Modifier.fillMaxWidth().height(350.dp))
+    AndroidView(factory={PlayerView(it).apply{useController=true;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player},modifier=Modifier.fillMaxWidth().height(350.dp))
 }

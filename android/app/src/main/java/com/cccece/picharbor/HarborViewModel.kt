@@ -34,6 +34,7 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     var batchArchived by mutableStateOf(false);private set
     fun showJob(id:String,status:String="all",archived:Boolean=false){navigate("job-details");inspectedJob.value=id;detailLimit=200;batchStatus=status;batchArchived=archived}
     fun taskProxy(value:String)=action {
+        val origin=pageKey
         val job=graph.dao.job(inspectedJob.value)?:return@action
         if(job.account!=settings.value.account)return@action
         val wasRunning=graph.backup.activeJob.value==job.id&&job.state=="running"
@@ -41,9 +42,10 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
         val current=graph.dao.job(job.id)?:job
         graph.dao.putJob(current.copy(proxyPolicy=value,state=if(wasRunning&&current.state=="paused")"queued" else current.state))
         if(job.state!="paused")graph.scheduler.launchManual(job.allowMobile)
-        back()
+        backFrom(origin)
     }
     var page by mutableStateOf("photos");private set
+    var pageKey by mutableStateOf(UUID.randomUUID().toString());private set
     var scanPurpose by mutableStateOf("");private set
     var scanResults by mutableStateOf(listOf<String>());private set
     var scanner:(Boolean)->Unit={}
@@ -70,8 +72,13 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     private val stacks=MobilePage.roots.associateWith{mutableListOf<MobileNavigationEntry>()}
     private val tabEntries=mutableMapOf<MobilePage,MobileNavigationEntry>()
     var selectedTab by mutableStateOf(MobilePage.Photos);private set
-    private fun entry()=MobileNavigationEntry(MobilePage.from(page),activeMediaId,inspectedItem,inspectedJob.value,inspectedProfile,batchStatus,batchArchived)
-    private fun restore(entry:MobileNavigationEntry){page=entry.page.route;activeMediaId=entry.media;inspectedItem=entry.item;inspectedJob.value=entry.job;inspectedProfile=entry.profile;batchStatus=entry.status;batchArchived=entry.archived}
+    private fun entry()=MobileNavigationEntry(MobilePage.from(page),activeMediaId,inspectedItem,inspectedJob.value,inspectedProfile,batchStatus,batchArchived,pageKey)
+    private fun restore(entry:MobileNavigationEntry){page=entry.page.route;pageKey=entry.key;activeMediaId=entry.media;inspectedItem=entry.item;inspectedJob.value=entry.job;inspectedProfile=entry.profile;batchStatus=entry.status;batchArchived=entry.archived}
+    val activePageKeys get()=buildSet {
+        add(pageKey)
+        MobilePage.roots.forEach{root->stacks.getValue(root).forEach{add(it.key)};if(root!=selectedTab)tabEntries[root]?.let{add(it.key)}}
+    }
+    fun backFrom(key:String){if(pageKey==key)back()}
     val canGoBack get()=sheet.isNotEmpty()||(selectionMode&&page=="photos")||stacks.getValue(selectedTab).isNotEmpty()
     var selected by mutableStateOf(setOf<String>());private set
     var selectionMode by mutableStateOf(false);private set
@@ -116,7 +123,7 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     }
     private var navigationRestored=false
     fun navigationSnapshot():String {
-        fun json(e:MobileNavigationEntry)=JSONObject().put("page",e.page.route).put("media",e.media).put("item",e.item).put("job",e.job).put("profile",e.profile).put("status",e.status).put("archived",e.archived)
+        fun json(e:MobileNavigationEntry)=JSONObject().put("page",e.page.route).put("media",e.media).put("item",e.item).put("job",e.job).put("profile",e.profile).put("status",e.status).put("archived",e.archived).put("key",e.key)
         val tabs=JSONObject();val history=JSONObject()
         MobilePage.roots.forEach { root ->
             tabs.put(root.route,json(if(root==selectedTab)entry() else tabEntries[root]?:MobileNavigationEntry(root)))
@@ -131,7 +138,7 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
         if(value.isNullOrBlank())return
         runCatching {
             val data=JSONObject(value);if(data.optInt("schema")!=1)return
-            fun entry(data:JSONObject)=MobileNavigationEntry(MobilePage.from(data.getString("page")),data.optString("media"),data.optString("item"),data.optString("job"),data.optString("profile"),data.optString("status","all"),data.optBoolean("archived"))
+            fun entry(data:JSONObject)=MobileNavigationEntry(MobilePage.from(data.getString("page")),data.optString("media"),data.optString("item"),data.optString("job"),data.optString("profile"),data.optString("status","all"),data.optBoolean("archived"),data.optString("key").ifBlank{UUID.randomUUID().toString()})
             val restoredTabs=MobilePage.roots.associateWith{entry(data.getJSONObject("tabs").getJSONObject(it.route))}
             val restoredStacks=MobilePage.roots.associateWith{root->val a=data.getJSONObject("history").getJSONArray(root.route);(0 until a.length()).map{entry(a.getJSONObject(it))}}
             val root=MobilePage.from(data.getString("selected"));require(root.root)
@@ -148,12 +155,12 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
         if(target.route==page)return
         if(target.root){tab(destination);return}
         navigationForward=true;stacks.getValue(selectedTab).add(entry())
-        page=target.route;sheet=""
+        page=target.route;pageKey=UUID.randomUUID().toString();sheet=""
     }
     fun tab(destination:String){
         val target=MobilePage.from(destination);require(target.root)
         if(target==selectedTab){
-            if(page!=target.route){navigationForward=false;stacks.getValue(target).clear();restore(MobileNavigationEntry(target));sheet=""}
+            if(page!=target.route){navigationForward=false;val first=stacks.getValue(target).firstOrNull{it.page==target}?:MobileNavigationEntry(target);stacks.getValue(target).clear();restore(first);sheet=""}
             return
         }
         tabEntries[selectedTab]=entry();selectedTab=target
@@ -262,10 +269,11 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
         message="已更新等待确认任务的检查设置"
     }
     fun savePipeline(mode:String,limits:String,execution:String)=action {
+        val origin=pageKey
         graph.preferences.string("pipelineLimits",limits)
         graph.preferences.string("pipelineMode",mode)
         graph.preferences.string("executionPolicy",execution)
-        graph.scheduler.configure();back()
+        graph.scheduler.configure();backFrom(origin)
     }
     fun pauseBatch(ids:List<String>)=action { graph.backup.pauseJobs(ids) }
     fun resumeBatch(ids:List<String>)=action { graph.backup.resumeJobs(ids); graph.scheduler.launchManual() }
@@ -324,10 +332,11 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
         val ids=graph.media.importUris(uris);selected=ids.toSet();selectionMode=true;tab("photos");selected=ids.toSet();selectionMode=true
     }
     fun confirmScope(all:Boolean,folders:Set<String>,automatic:Boolean)=action {
+        val origin=pageKey
         if(graph.preferences.get().account.isBlank()){navigate("accounts");return@action}
         graph.preferences.folders(folders);graph.preferences.boolean("allFolders",all)
         graph.preferences.boolean("onboarded",true);graph.preferences.boolean("auto",automatic)
-        graph.scheduler.configure();if(automatic)graph.scheduler.checkSoon();back()
+        graph.scheduler.configure();if(automatic)graph.scheduler.checkSoon();backFrom(origin)
     }
     fun setAlbumSync(enabled:Boolean)=action {graph.preferences.string("albumMode",if(enabled)"folder" else "none");graph.scheduler.configure()}
     var inspectedProfile by mutableStateOf("");private set

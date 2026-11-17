@@ -50,6 +50,13 @@ private class MobileTranslations(private val table:JSONObject) {
     }
 }
 
+fun android.content.Context.localizedMobileText(language:String,value:String):String {
+    val tag=if(language=="system")resources.configuration.locales[0].toLanguageTag() else language
+    val tableName=if(tag.startsWith("en"))"en" else if(tag.startsWith("yue")||tag.contains("HK",true))"yue-Hant-HK" else return value
+    val table=assets.open("localization/$tableName.json").bufferedReader(Charsets.UTF_8).use{JSONObject(it.readText())}
+    return MobileTranslations(table).translate(value)
+}
+
 @Composable
 fun MobileLocale(language:String,content:@Composable ()->Unit) {
     val original=LocalContext.current

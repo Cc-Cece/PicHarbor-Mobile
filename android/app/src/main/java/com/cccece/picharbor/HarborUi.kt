@@ -21,6 +21,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -103,31 +108,36 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     val density=LocalDensity.current
+    val direction=if(LocalLayoutDirection.current==LayoutDirection.Rtl)-1 else 1
     val keyboardVisible=WindowInsets.ime.getBottom(density)>0
     val showBottomBar=vm.page !in setOf("detail","information")&&!keyboardVisible
     var measuredBar by remember{mutableIntStateOf(0)}
     val barHeight=if(measuredBar>0)with(density){measuredBar.toDp()} else 80.dp+WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    LaunchedEffect(vm.selectedTab,vm.page){focus.clearFocus();keyboard?.hide()}
+    var previousPage by remember{mutableStateOf(vm.pageKey)}
+    LaunchedEffect(vm.pageKey){if(previousPage!=vm.pageKey){focus.clearFocus();keyboard?.hide()};previousPage=vm.pageKey}
+    val retainedKeys=remember{mutableSetOf<String>()}
+    val activeKeys=vm.activePageKeys
+    LaunchedEffect(activeKeys){(retainedKeys-activeKeys).forEach{pageState.removeState(it)};retainedKeys.clear();retainedKeys.addAll(activeKeys)}
     val messageText=localize(vm.message)
     val noticeText=localize(notice)
     LaunchedEffect(messageText){if(messageText.isNotBlank()){snackbar.showSnackbar(messageText);vm.clearMessage()}}
     LaunchedEffect(noticeText){if(noticeText.isNotBlank())snackbar.showSnackbar(noticeText)}
     BackHandler(vm.canGoBack){vm.back()}
     PicHarborTheme(settings) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
           Column(Modifier.fillMaxSize()) {
 
             val rootPages=remember{setOf("photos","backup","activity","settings")}
             val lastRoot=vm.selectedTab.route
 
             Box(Modifier.weight(1f).fillMaxWidth().consumeWindowInsets(if(hasStatus)WindowInsets.statusBars else WindowInsets(0,0,0,0))) {
-                AnimatedContent(targetState=vm.selectedTab to vm.page,modifier=Modifier.fillMaxSize(),transitionSpec={
+                AnimatedContent(targetState=Triple(vm.selectedTab,vm.page,vm.pageKey),modifier=Modifier.fillMaxSize(),transitionSpec={
                     val tabs=initialState.first!=targetState.first
                     val enter=fadeIn(tween(260,easing=FastOutSlowInEasing))+
-                        slideInHorizontally(tween(320,easing=FastOutSlowInEasing)){if(tabs)0 else it/32*(if(vm.navigationForward)1 else -1)}
+                        slideInHorizontally(tween(320,easing=FastOutSlowInEasing)){if(tabs)0 else it/32*direction*(if(vm.navigationForward)1 else -1)}
                     (enter togetherWith fadeOut(tween(180,easing=FastOutSlowInEasing))).using(null)
-                },label="content-transition") { (currentTab,page) ->
-                    pageState.SaveableStateProvider(currentTab.route+":"+page) {
+                },label="content-transition") { (currentTab,page,key) ->
+                    pageState.SaveableStateProvider(key) {
                         val padding=Modifier.padding(bottom=if(showBottomBar)barHeight else 0.dp).statusBarsPadding().then(if(showBottomBar)Modifier else Modifier.navigationBarsPadding()).imePadding()
                         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(padding)) {
                             when(page) {
@@ -191,8 +201,8 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
 fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,action:@Composable RowScope.()->Unit={}) {
     if(root)Column(Modifier.fillMaxWidth().padding(start=20.dp,end=16.dp,bottom=12.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min=36.dp),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically,content=action)
-        LText(title,style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.onBackground,modifier=Modifier.padding(top=6.dp))
-    } else TopAppBar(title={LText(title)},navigationIcon={IconButton(onClick=vm::back){LIcon(Icons.Outlined.ArrowBack,"返回")}},actions=action,windowInsets=WindowInsets(0,0,0,0))
+        LText(title,style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.onBackground,modifier=Modifier.padding(top=6.dp).semantics{heading()})
+    } else TopAppBar(title={LText(title)},navigationIcon={IconButton(onClick=vm::back){LIcon(Icons.AutoMirrored.Outlined.ArrowBack,"返回")}},actions=action,windowInsets=WindowInsets(0,0,0,0))
 
 }
 @Composable

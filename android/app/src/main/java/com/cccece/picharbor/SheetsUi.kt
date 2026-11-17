@@ -13,20 +13,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import java.time.*
 import java.time.format.DateTimeFormatter
 
 @Composable
 fun Choice(label:String,checked:Boolean,description:String="",enabled:Boolean=true,onClick:()->Unit) {
-    Row(Modifier.fillMaxWidth().clickable(enabled=enabled,onClick=onClick).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
-        RadioButton(checked,onClick=onClick,enabled=enabled)
+    Row(Modifier.fillMaxWidth().selectable(selected=checked,enabled=enabled,role=Role.RadioButton,onClick=onClick).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
+        RadioButton(checked,onClick=null,enabled=enabled)
         Column(Modifier.weight(1f)){LText(label,style=MaterialTheme.typography.bodyLarge);if(description.isNotEmpty())LText(description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }
 @Composable
 fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTree:()->Unit) {
-    val context=LocalContext.current
+    val context=LocalView.current.context
     val accounts by vm.accounts.collectAsState()
     val mode=vm.sheet
     if(mode.isEmpty())return
@@ -184,8 +187,9 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                 }
                 mode=="background"->{
                     Helper("允许通知和后台运行，有助于备份在锁屏后继续。不同手机的自启动设置名称可能不同。")
-                    Button(onClick={runCatching{context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}")))}} ,modifier=Modifier.fillMaxWidth()){LText("打开应用设置")}
-                    OutlinedButton(onClick={runCatching{context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))}},modifier=Modifier.fillMaxWidth()){LText("查看电池优化设置")}
+                    OutlinedButton(onClick={if(!context.openProductIntent(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName))){vm.sheet="";vm.say("暂时无法打开此页面")}},modifier=Modifier.fillMaxWidth()){LText("通知设置")}
+                    Button(onClick={runCatching{if(!context.openProductIntent(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}")))){vm.sheet="";vm.say("暂时无法打开此页面")}}} ,modifier=Modifier.fillMaxWidth()){LText("打开应用设置")}
+                    OutlinedButton(onClick={runCatching{if(!context.openProductIntent(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))){vm.sheet="";vm.say("暂时无法打开此页面")}}},modifier=Modifier.fillMaxWidth()){LText("查看电池优化设置")}
                 }
                 mode=="concurrency"->{(1..3).forEach{n->Choice(if(n==2)"2 个（默认）" else "$n 个",data.settings.concurrency==n){vm.setInteger("concurrency",n)}}}
                 mode=="timeout"->{listOf(30,60,120).forEach{n->Choice("$n 秒",data.settings.timeout==n){vm.setInteger("timeout",n)}}}

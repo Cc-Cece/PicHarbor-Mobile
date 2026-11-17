@@ -5,6 +5,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -15,11 +16,11 @@ fun TaskProxyScreen(vm:HarborViewModel,data:HarborUiData) {
     val job=data.jobs.firstOrNull{it.id==id}
     val global by vm.graph.proxy.library.collectAsState()
     val saved=remember(job?.proxyPolicy){runCatching{org.json.JSONObject(job?.proxyPolicy.orEmpty())}.getOrDefault(org.json.JSONObject())}
-    var follow by remember(job?.id){mutableStateOf(job?.proxyPolicy.isNullOrBlank())}
-    var automatic by remember(job?.id){mutableStateOf(saved.optString("selection","automatic")=="automatic")}
-    var primary by remember(job?.id){mutableStateOf(saved.optString("primary",global.optString("primary")))}
-    var direct by remember(job?.id){mutableStateOf(saved.optString("exhaustion","wait")=="direct")}
-    var backups:List<String> by remember(job?.id){mutableStateOf<List<String>>(saved.optJSONArray("backups")?.let{array->(0 until array.length()).map{array.getString(it)}}?:emptyList())}
+    var follow by rememberSaveable(job?.id){mutableStateOf(job?.proxyPolicy.isNullOrBlank())}
+    var automatic by rememberSaveable(job?.id){mutableStateOf(saved.optString("selection","automatic")=="automatic")}
+    var primary by rememberSaveable(job?.id){mutableStateOf(saved.optString("primary",global.optString("primary")))}
+    var direct by rememberSaveable(job?.id){mutableStateOf(saved.optString("exhaustion","wait")=="direct")}
+    var backups by rememberSaveable(job?.id){mutableStateOf(ArrayList(saved.optJSONArray("backups")?.let{array->(0 until array.length()).map{array.getString(it)}}?:emptyList()))}
     ProductPage("任务连接策略",vm) {
         ProductSection {
             ToggleRow("跟随全局","关闭后仅更改此任务",follow,enabled=!vm.busy){follow=it}
@@ -30,8 +31,8 @@ fun TaskProxyScreen(vm:HarborViewModel,data:HarborUiData) {
                 if(!automatic)vm.graph.proxy.profile()?.getJSONArray("nodes")?.let{nodes->
                     for(i in 0 until nodes.length()) {
                         val name=nodes.getJSONObject(i).getString("name")
-                        Row {RadioButton(primary==name,onClick={primary=name});LText(name)}
-                        if(primary!=name)Row{Checkbox(name in backups,onCheckedChange={checked->backups=if(checked)backups+name else backups-name});LText("备用节点")}
+                        NativeChoiceRow(name,primary==name,enabled=!vm.busy,localized=false){primary=name}
+                        if(primary!=name)NativeCheckRow("备用节点",name in backups,enabled=!vm.busy){checked->backups=ArrayList(if(checked)backups+name else backups-name)}
                     }
                 }
                 ToggleRow("所有节点不可用时允许直连","关闭时等待连接",direct,enabled=!vm.busy){direct=it}

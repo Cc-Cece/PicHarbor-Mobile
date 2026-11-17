@@ -63,7 +63,7 @@ class MainActivity:ComponentActivity() {
         model.restoreNavigation(savedInstanceState?.getString("mobile_navigation"))
         enableEdgeToEdge()
         model.proxyFilePicker={proxyFile.launch(arrayOf("*/*"))}
-        model.scanner={image->if(image)qrImage.launch("image/*") else qrCamera.launch(com.journeyapps.barcodescanner.ScanOptions().setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE).setPrompt("扫描二维码").setBeepEnabled(false))}
+        model.scanner={image->if(image)qrImage.launch("image/*") else qrCamera.launch(com.journeyapps.barcodescanner.ScanOptions().setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE).setPrompt(localizedMobileText(model.settings.value.language,"扫描二维码")).setBeepEnabled(false))}
         if(savedInstanceState!=null)reportRange=LogRange(savedInstanceState.getLong("log_start",Long.MIN_VALUE),savedInstanceState.getLong("log_end",Long.MAX_VALUE),savedInstanceState.getString("log_zone")?:java.time.ZoneId.systemDefault().id)
         if(intent.getBooleanExtra("open_history",false))model.tab("activity")
         lifecycleScope.launch {
@@ -87,7 +87,6 @@ class MainActivity:ComponentActivity() {
         val list=if(Build.VERSION.SDK_INT>=33)mutableListOf(Manifest.permission.READ_MEDIA_IMAGES,Manifest.permission.READ_MEDIA_VIDEO)
             else mutableListOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         if(Build.VERSION.SDK_INT>=34)list+=Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-        if(Build.VERSION.SDK_INT>=33)list+=Manifest.permission.POST_NOTIFICATIONS
         permissions.launch(list.toTypedArray())
     }
     override fun onStart(){super.onStart();model.graph.visible.set(true);model.graph.computer.startPresence()}

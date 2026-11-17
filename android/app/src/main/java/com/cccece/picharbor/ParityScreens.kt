@@ -8,6 +8,8 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +31,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
@@ -39,13 +42,18 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 
 /** Keep share/settings flows in the current task when an Activity is available. */
-fun android.content.Context.openProductIntent(intent:Intent) {
+fun android.content.Context.openProductIntent(intent:Intent):Boolean = try {
     var current=this
     while(current is android.content.ContextWrapper && current !is android.app.Activity) {
         val base=current.baseContext;if(base===current)break;current=base
     }
     if(current is android.app.Activity)current.startActivity(intent)
     else startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    true
+} catch(_:android.content.ActivityNotFoundException) {
+    false
+} catch(_:SecurityException) {
+    false
 }
 
 @Composable
@@ -66,7 +74,7 @@ fun ProductPage(title:String,vm:HarborViewModel,root:Boolean=false,actions:@Comp
 @Composable
 fun ProductSection(title:String="",footer:String="",content:@Composable ColumnScope.()->Unit) {
     Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        if(title.isNotEmpty())LText(title,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=12.dp))
+        if(title.isNotEmpty())LText(title,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(horizontal=12.dp).semantics{heading()})
         Surface(shape=MaterialTheme.shapes.medium,color=MaterialTheme.colorScheme.surfaceContainerLow) {
             Column(Modifier.fillMaxWidth(),content=content)
         }
@@ -79,15 +87,16 @@ fun ProductValue(label:String,value:String,localized:Boolean=true) {
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
         LText(label,modifier=Modifier.weight(1f));Spacer(Modifier.width(12.dp))
         Box(Modifier.weight(1f),contentAlignment=Alignment.CenterEnd) {
-            LText(value,localize=localized,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(localized)LText(value,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            else SelectionContainer{LText(value,localize=false,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         }
     }
 }
 
 @Composable
-fun ProductAction(label:String,icon:ImageVector?=null,enabled:Boolean=true,onClick:()->Unit) {
+fun ProductAction(label:String,icon:ImageVector?=null,enabled:Boolean=true,destructive:Boolean=false,onClick:()->Unit) {
     val focus=LocalFocusManager.current
-    TextButton(onClick={focus.clearFocus();onClick()},enabled=enabled,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=16.dp,vertical=12.dp)) {
+    TextButton(onClick={focus.clearFocus();onClick()},enabled=enabled,colors=ButtonDefaults.textButtonColors(contentColor=if(destructive)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary),modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),contentPadding=PaddingValues(horizontal=16.dp,vertical=12.dp)) {
         if(icon!=null){LIcon(icon,null);Spacer(Modifier.width(12.dp))}
         LText(label,modifier=Modifier.weight(1f))
     }
@@ -97,7 +106,7 @@ fun ProductAction(label:String,icon:ImageVector?=null,enabled:Boolean=true,onCli
 fun ProductPicker(label:String,value:String,options:List<Pair<String,String>>,enabled:Boolean=true,onSelect:(String)->Unit) {
     val focus=LocalFocusManager.current
     var open by remember{mutableStateOf(false)}
-    SettingsRow(label,options.firstOrNull{it.first==value}?.second?:value,enabled=enabled,onClick={focus.clearFocus();open=true}) {LIcon(Icons.Outlined.ExpandMore,null)}
+    SettingsRow(label,options.firstOrNull{it.first==value}?.second?:value,enabled=enabled&&options.isNotEmpty(),onClick={focus.clearFocus();open=true}) {LIcon(Icons.Outlined.ExpandMore,null)}
     if(open)AlertDialog(onDismissRequest={open=false},title={LText(label)},text={
         LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp).selectableGroup()) {
             items(options,key={it.first}){(id,text)->
@@ -108,6 +117,22 @@ fun ProductPicker(label:String,value:String,options:List<Pair<String,String>>,en
             }
         }
     },confirmButton={},dismissButton={TextButton(onClick={open=false}){LText("取消")}})
+}
+
+@Composable
+fun NativeChoiceRow(title:String,selected:Boolean,enabled:Boolean=true,localized:Boolean=true,onClick:()->Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).selectable(selected=selected,enabled=enabled,role=Role.RadioButton,onClick=onClick).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        RadioButton(selected,onClick=null,enabled=enabled)
+        LText(title,modifier=Modifier.weight(1f),localize=localized)
+    }
+}
+
+@Composable
+fun NativeCheckRow(title:String,checked:Boolean,enabled:Boolean=true,localized:Boolean=true,onChange:(Boolean)->Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(value=checked,enabled=enabled,role=Role.Checkbox,onValueChange=onChange).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        Checkbox(checked,onCheckedChange=null,enabled=enabled)
+        LText(title,modifier=Modifier.weight(1f),localize=localized)
+    }
 }
 
 @Composable
@@ -122,6 +147,7 @@ fun ProductSegments(value:String,choices:List<Pair<String,String>>,onSelect:(Str
 @Composable
 fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onPickFiles:()->Unit) {
     val haptic=LocalHapticFeedback.current
+    val context=LocalContext.current
     var mediaMenu by remember{mutableStateOf(false)}
     var albums by remember{mutableStateOf(false)}
     var confirm by rememberSaveable{mutableStateOf(false)}
@@ -164,7 +190,10 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
             if(media.isEmpty())Box(Modifier.weight(1f)){EmptyState("没有可显示的项目","调整筛选条件或相册访问权限。",Icons.Outlined.PhotoLibrary)}
             else LazyVerticalGrid(columns=GridCells.Adaptive(112.dp),modifier=Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(2.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) {
                 items(media,key={it.id}){m->Box(Modifier.aspectRatio(1f).semantics {if(vm.selectionMode)selected=m.id in vm.selected}.combinedClickable(onClick={vm.open(m)},onLongClick={if(!vm.selectionMode)haptic.performHapticFeedback(HapticFeedbackType.LongPress);vm.select(m.id)})) {
-                    AsyncImage(Uri.parse(m.id),m.name,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+                    val imageKey="${m.id}:${m.modified}:${m.size}"
+                    var failed by remember(imageKey){mutableStateOf(false)}
+                    AsyncImage(remember(imageKey,context){coil.request.ImageRequest.Builder(context).data(Uri.parse(m.id)).memoryCacheKey(imageKey).diskCacheKey(imageKey).build()},m.name,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,onError={failed=true},onSuccess={failed=false})
+                    if(failed)Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),contentAlignment=Alignment.Center){LIcon(Icons.Outlined.BrokenImage,"无法加载预览",tint=MaterialTheme.colorScheme.onSurfaceVariant)}
                     if(data.status(m)=="uploaded")LIcon(Icons.Outlined.CloudDone,"已备份",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
                     else if(data.status(m)=="uploading")LIcon(Icons.Outlined.Sync,"备份中",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
                     else if(data.status(m)=="error")LIcon(Icons.Outlined.ErrorOutline,"需要处理",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
@@ -275,6 +304,7 @@ fun FoldersScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,on
 
 @Composable
 fun NetworkScreen(vm:HarborViewModel,data:HarborUiData) {
+    val device=rememberNativeDeviceStatus()
     ProductPage("网络与后台",vm) {
         ProductSection(footer="网络设置立即生效，手动暂停的任务保持暂停。正在上传的文件可能需要重传。关闭自动备份不会取消已有任务。") {
             ToggleRow("仅通过 Wi-Fi 备份","",data.settings.wifi,enabled=!vm.busy){vm.setMobile(if(it)"none" else "all")}
@@ -283,9 +313,9 @@ fun NetworkScreen(vm:HarborViewModel,data:HarborUiData) {
         }
         ProductSection("后台执行") {
             LText("后台备份由系统安排，省电或网络限制时可能延后。打开应用可继续备份。",modifier=Modifier.padding(16.dp))
-            ProductValue("当前网络",if(vm.graph.backup.onWifi())"Wi-Fi" else "非 Wi-Fi")
-            val power=LocalContext.current.getSystemService(android.os.PowerManager::class.java)
-            ProductValue("省电模式",if(power.isPowerSaveMode)"已开启" else "未开启")
+            ProductValue("当前网络",device.network)
+            ProductValue("省电模式",if(device.powerSaving)"已开启" else "未开启")
+            if(device.network!="未连接"&&!device.validated)LText("系统尚未验证互联网连接。",style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(horizontal=16.dp))
             ProductValue("暂存资源",formatSize(vm.graph.pipeline.stagedBytes))
             SettingsRow("Android 后台运行设置",onClick={vm.navigate("background-settings")})
         }
@@ -309,6 +339,7 @@ fun AccountsScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
 
 @Composable
 fun ConnectionScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
+    val focus=LocalFocusManager.current
     var credential by remember{mutableStateOf("")}
     ProductPage("欢迎使用 PicHarbor",vm,actions={TextButton(onClick=vm::back,enabled=!vm.busy){LText("稍后")}}) {
         ProductSection {
@@ -320,7 +351,7 @@ fun ConnectionScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
             }
         }
         ProductSection("已有 gpmc 凭据","凭据仅保存在本机安全存储，不导出到诊断报告。应用内网页登录受 Google 规则影响时，可导入已有凭据。") {
-            OutlinedTextField(credential,{credential=it},label={LText("粘贴登录凭据")},visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth().padding(16.dp))
+            OutlinedTextField(credential,{credential=it},label={LText("粘贴登录凭据")},visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),modifier=Modifier.fillMaxWidth().padding(16.dp))
             ProductAction("导入并连接",enabled=credential.isNotBlank()&&!vm.busy&&vm.engineReady){val value=credential;credential="";vm.login(value)}
         }
         if(vm.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -335,7 +366,7 @@ fun PermissionsScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Uni
         ProductSection(footer="有限授权仅显示和备份已授权内容。权限减少不会被视为照片已经删除。") {
             ProductValue("当前权限",if(vm.graph.media.fullAccess())"完整访问" else if(vm.graph.media.hasAccess())"有限访问" else "未授权")
             ProductAction(if(vm.graph.media.hasAccess())"管理已授权内容" else "允许访问相册",onClick=onPermissions)
-            ProductAction("打开系统设置"){context.openProductIntent(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}")))}
+            ProductAction("打开系统设置"){if(!context.openProductIntent(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}"))))vm.say("暂时无法打开此页面")}
         }
         ProductSection("Android 存储访问") {SettingsRow("添加文件夹 / SD 卡",onClick=onPickTree)}
     }
@@ -375,7 +406,7 @@ fun AboutScreen(vm:HarborViewModel,data:HarborUiData) {
         ProductSection("组件与许可证") {
             ProductValue("界面","Kotlin / Jetpack Compose",false);ProductValue("共享核心","gpmc / Python",false);ProductValue("应用内代理","ProjectClash / Clash",false)
             SettingsRow("开源许可",onClick={vm.sheet="licenses"})
-            SettingsRow("项目仓库",onClick={context.openProductIntent(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Cc-Cece/PicHarbor-Mobile")))})
+            SettingsRow("项目仓库",onClick={if(!context.openProductIntent(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Cc-Cece/PicHarbor-Mobile"))))vm.say("暂时无法打开此页面")})
         }
     }
 }
@@ -392,7 +423,7 @@ fun FreeSpaceScreen(vm:HarborViewModel,data:HarborUiData) {
         }
         ProductSection(footer="请确认 Google 相册当前使用的是备份账号。菜单名称和位置可能因版本或语言有所不同。") {
             ProductAction("其他打开方式"){alternatives=!alternatives}
-            if(alternatives){LText("打开 Google 相册，点击头像，再选择“释放空间”。",modifier=Modifier.padding(16.dp));ProductAction("打开 Google 相册"){val intent=context.packageManager.getLaunchIntentForPackage("com.google.android.apps.photos");if(intent!=null)context.openProductIntent(intent)else vm.say("请先安装 Google 相册")}}
+            if(alternatives){LText("打开 Google 相册，点击头像，再选择“释放空间”。",modifier=Modifier.padding(16.dp));ProductAction("打开 Google 相册"){val intent=context.packageManager.getLaunchIntentForPackage("com.google.android.apps.photos");if(intent==null||!context.openProductIntent(intent))vm.say("请先安装 Google 相册")}}
         }
         ProductSection {LText("请选择释放设备空间，避免误入清理云端存储。请先确认备份完成；PicHarbor 不会删除手机原件。",modifier=Modifier.padding(16.dp))}
     }
