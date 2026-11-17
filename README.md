@@ -6,7 +6,7 @@ The product and page structure follow the frozen iOS `e0c495c9b23dba5b40eaff7e01
 
 本轮交付及构建安装记录见 [DELIVERY-2026-11-18.md](specs/DELIVERY-2026-11-18.md)。代码位于 `feat/mobile-framework-parity`，用户实机验收独立记录。
 
-后续 Android 原生体验优化版本为 `2.0.0-alpha.3`，见 [优化记录](specs/ANDROID-NATIVE-EXPERIENCE-2026-11-18.md)；保留已确认的页面框架。
+后续 Android 原生体验优化版本为 `2.0.0-alpha.4`，见 [优化记录](specs/ANDROID-NATIVE-EXPERIENCE-2026-11-18.md)；保留已确认的页面框架。按用户最新要求只编译，不安装，自动安装任务已停用。
 
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. Functional tests and phone UI interaction are not executed during this delivery at the user's request.
 
@@ -16,7 +16,7 @@ Build Android from `android/` with `tools/build-release.ps1`; persistent signing
 - Update both snapshots from the sibling canonical repository: `python tools/sync-core.py --source ../gpmc` (run from `mobile/`).
 - Windows signed APK: run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1` from `android/`.
 - Root GitHub workflows build Android Debug and unsigned iOS IPA independently, without tests or uploaded private keys. Nested historical workflows are retained for provenance and are not active workflows in this repository.
-- The existing 30-minute device task is moved with `tools/register-device-preview.ps1`; signing paths and mutex stay unchanged. It installs only, never launches or clears the app.
+- The existing 30-minute device installation task is disabled at the user's request. Do not register, enable or start it without a new installation instruction. Signing paths and mutex remain unchanged.
 - `python tools/package-mobile.py` creates the committed source archive with the pinned GPL proxy sources. No local credentials, signing keys or build caches are included.
 - Optional CI download tooling requires `python -m pip install -r tools/requirements.txt`; `python tools/download-ipa.py RUN_ID` checks the successful source run and GitHub artifact checksum.
 
