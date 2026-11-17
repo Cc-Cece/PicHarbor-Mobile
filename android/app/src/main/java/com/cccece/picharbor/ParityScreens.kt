@@ -58,7 +58,9 @@ fun ProductSection(title:String="",footer:String="",content:@Composable ColumnSc
 fun ProductValue(label:String,value:String,localized:Boolean=true) {
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
         LText(label,modifier=Modifier.weight(1f));Spacer(Modifier.width(12.dp))
-        LText(value,localize=localized,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(Modifier.weight(1f),contentAlignment=Alignment.CenterEnd) {
+            LText(value,localize=localized,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -95,8 +97,8 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
     var confirm by rememberSaveable{mutableStateOf(false)}
     val folderCounts=rememberFolderCounts(data)
     val media=remember(data.logicalMedia,data.backupMap,data.itemMap,vm.filter,vm.type,vm.libraryAlbum,data.settings.account,data.transfer.item){data.logicalMedia.filter { m ->
-        val state=data.status(m)
-        (vm.filter=="all"||vm.filter=="uploaded"&&state=="uploaded"||vm.filter=="pending"&&state in setOf("pending","unknown")||vm.filter=="error"&&state=="error")&&
+        val backed=data.backed(m)
+        (vm.filter=="all"||vm.filter=="uploaded"&&backed||vm.filter=="pending"&&!backed)&&
         (vm.type=="all"||vm.type=="video"&&m.video||vm.type=="photo"&&!m.video||vm.type=="live"&&!m.video&&m.pairingID.isNotEmpty())&&
         (vm.libraryAlbum.isEmpty()||vm.libraryAlbum in LivePhotoPairing.folders(m,data.media))
     }}
@@ -134,6 +136,8 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
                 items(media,key={it.id}){m->Box(Modifier.aspectRatio(1f).combinedClickable(onClick={vm.open(m)},onLongClick={vm.select(m.id)})) {
                     AsyncImage(Uri.parse(m.id),m.name,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
                     if(data.status(m)=="uploaded")LIcon(Icons.Outlined.CloudDone,"已备份",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
+                    else if(data.status(m)=="uploading")LIcon(Icons.Outlined.Sync,"备份中",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
+                    else if(data.status(m)=="error")LIcon(Icons.Outlined.ErrorOutline,"需要处理",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
                     if(m.video)LIcon(Icons.Outlined.PlayArrow,"视频",Modifier.align(Alignment.BottomStart).padding(5.dp),tint=Color.White)
                     if(vm.selectionMode)Checkbox(m.id in vm.selected,onCheckedChange={vm.select(m.id)},modifier=Modifier.align(Alignment.TopEnd))
                 }}
@@ -309,7 +313,7 @@ fun PermissionsScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Uni
 @Composable
 fun BackgroundSettingsScreen(vm:HarborViewModel,data:HarborUiData) {
     ProductPage("Android 后台运行设置",vm) {
-        ProductSection(footer="这些选项对应 Android 的通知与后台运行限制，不改变共同备份内容和页面结构。") {
+        ProductSection(footer="系统省电、网络和充电条件可能使任务延后。后台检查不会要求手机一直亮屏。") {
             SettingsRow("通知、电池优化和自启动",onClick={vm.sheet="background"})
             ToggleRow("重启后恢复备份","恢复未完成任务与自动检查",data.settings.restart,enabled=!vm.busy){vm.setBoolean("restart",it)}
         }

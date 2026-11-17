@@ -196,7 +196,8 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     fun login(token:String)=action {
         graph.login(token);loginRequired=false;message="账号已连接"
         if(graph.dao.nextJob(graph.preferences.get().account)!=null)graph.scheduler.launchManual()
-        if(!settings.value.onboarded)navigate("folders")
+        if(page=="connection")back()
+        if(!graph.preferences.get().onboarded)navigate("folders")
     }
     fun logout()=action {
         graph.logout();loginRequired=false;sheet="";message="已退出，云端备份会保留";tab("settings")
