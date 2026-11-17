@@ -120,6 +120,7 @@
 "优先保持正常连接，失败后结合延时和近期表现选择其他节点。" = "Keep working connections. On failure, choose another node using latency and recent results.";
 "传到这台电脑" = "Send to this computer";
 "传输中" = "Uploading";
+"传输到电脑" = "Transfer to computer";
 "传输原始配对资源" = "Upload paired originals";
 "低电量模式" = "Low Power Mode";
 "你的照片，尽在这里" = "Your photos, right here";

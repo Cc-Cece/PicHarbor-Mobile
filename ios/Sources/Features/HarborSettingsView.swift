@@ -337,7 +337,7 @@ private struct AboutView: View {
             Section { Text(L10n.text("面向 iPhone 的照片与视频备份。取回内容请使用谷歌相册官方客户端。")) }
             Section(L10n.text("开源组件")) {
                 Text(L10n.text("gpmc · GPL-3.0\nCPython · Python Software Foundation License\nblackboxprotobuf · MIT\nRequests 及依赖许可证随应用分发。"))
-                Link(L10n.text("项目源码与许可证"), destination: URL(string: "https://github.com/Cc-Cece/PicHarbor-iOS")!)
+                Link(L10n.text("项目源码与许可证"), destination: URL(string: "https://github.com/Cc-Cece/PicHarbor-Mobile")!)
                 Text("Clash · GPL-3.0")
                 if let url = Bundle.main.url(forResource: "THIRD_PARTY_LICENSES", withExtension: "zip", subdirectory: "ProxyNotices") {
                     ShareLink(item: url) { Text(L10n.text("代理组件开源许可")) }
