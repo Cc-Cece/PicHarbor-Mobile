@@ -220,7 +220,7 @@ struct JobRow: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: job.statusSymbol)
-                .font(.title2).foregroundStyle(job.skippedExisting ? .gray : job.state == .completed ? .green : .blue).accessibilityHidden(true)
+                .font(.title2).foregroundStyle(job.hasLiveWarning ? .orange : job.skippedExisting ? .gray : job.state == .completed ? .green : .blue).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
                 if showDate { Text(name).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading) }
                 else {

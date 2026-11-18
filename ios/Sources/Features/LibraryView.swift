@@ -109,7 +109,7 @@ private struct PhotoGrid: UIViewRepresentable {
             for path in grid.indexPathsForVisibleItems {
                 guard path.item < assets.count, let cell = grid.cellForItem(at: path) as? PhotoCell else { continue }
                 cell.badge.text = selecting ? (selected.contains(assets[path.item].localIdentifier) ? "✓" : "○") : ""
-                cell.applyState(state(for: assets[path.item]), selecting: selecting, skipped: states[assets[path.item].localIdentifier]?.skipped == true)
+                cell.applyState(state(for: assets[path.item]), selecting: selecting, skipped: states[assets[path.item].localIdentifier]?.skipped == true, warning: states[assets[path.item].localIdentifier]?.liveWarning == true)
                 cell.accessibilityTraits = selected.contains(assets[path.item].localIdentifier) ? [.button, .selected] : .button
             }
         }
@@ -130,7 +130,7 @@ private struct PhotoGrid: UIViewRepresentable {
             let asset = parent.assets[indexPath.item]
             cell.configure(asset, manager: parent.manager)
             cell.badge.text = parent.selecting ? (parent.selected.contains(asset.localIdentifier) ? "✓" : "○") : ""
-            cell.applyState(parent.state(for: asset), selecting: parent.selecting, skipped: parent.states[asset.localIdentifier]?.skipped == true)
+            cell.applyState(parent.state(for: asset), selecting: parent.selecting, skipped: parent.states[asset.localIdentifier]?.skipped == true, warning: parent.states[asset.localIdentifier]?.liveWarning == true)
             cell.accessibilityTraits = parent.selected.contains(asset.localIdentifier) ? [.button, .selected] : .button
             return cell
         }
@@ -160,10 +160,15 @@ private final class PhotoCell: UICollectionViewCell {
         isAccessibilityElement = true; accessibilityTraits = .button
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    func applyState(_ state: JobState?, selecting: Bool, skipped: Bool = false) {
+    func applyState(_ state: JobState?, selecting: Bool, skipped: Bool = false, warning: Bool = false) {
         cloud.isHidden = selecting || state == nil || state == .cancelled
         accessibilityValue = state == .completed && skipped ? L10n.text("已存在，跳过") : state?.title
         guard let state else { return }
+        if warning && state == .completed {
+            accessibilityValue = L10n.text("已保存 · 动态部分未确认")
+            cloud.tintColor = .systemOrange; cloud.backgroundColor = UIColor.black.withAlphaComponent(0.8)
+            cloud.image = UIImage(systemName: "exclamationmark.triangle.fill"); return
+        }
         let symbol = state == .paired ? "checkmark.circle.fill" : state == .completed ? "checkmark.icloud.fill" : state == .failed || state == .attention ? "exclamationmark.icloud" : state == .paused ? "pause.circle.fill" : "icloud.and.arrow.up"
         cloud.tintColor = state == .paired ? .systemBlue : state == .completed ? (skipped ? .systemGray : .systemGreen) : .white
         cloud.backgroundColor = (state == .paired || state == .completed ? UIColor.black : UIColor.systemBlue).withAlphaComponent(0.8)

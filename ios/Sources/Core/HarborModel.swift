@@ -437,7 +437,7 @@ final class HarborModel: ObservableObject {
         completedAssets.include(values, account: account)
         for job in values where job.account == account && job.activityHidden != true {
             if assetStates[job.assetID] == nil || job.created >= assetStates[job.assetID]!.created {
-                assetStates[job.assetID] = AssetBackupState(account: job.account, revision: job.assetRevision, state: job.state, created: job.created, skipped: job.skippedExisting)
+                assetStates[job.assetID] = AssetBackupState(account: job.account, revision: job.assetRevision, state: job.state, created: job.created, skipped: job.skippedExisting, liveWarning: job.hasLiveWarning)
             }
         }
     }

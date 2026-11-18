@@ -84,6 +84,7 @@ struct AssetBackupState {
     var state: JobState
     var created: Date
     var skipped = false
+    var liveWarning = false
 }
 
 enum LibraryBackupFilter: String, CaseIterable, Identifiable {
@@ -230,8 +231,9 @@ struct BackupJob: Codable, Identifiable {
     func canSchedule(alongside running: [BackupJob]) -> Bool {
         running.filter { $0.confirmationOnly == confirmationOnly }.count < (confirmationOnly ? 1 : 2)
     }
+    var hasLiveWarning: Bool { state == .completed && !(livePlan?.warning ?? "").isEmpty }
     var statusSymbol: String {
-        state == .completed || state == .paired ? "checkmark.circle.fill" :
+        hasLiveWarning ? "exclamationmark.triangle.fill" : state == .completed || state == .paired ? "checkmark.circle.fill" :
         state == .failed || state == .attention ? "exclamationmark.circle" : "icloud.and.arrow.up"
     }
     mutating func beginConfirmation(now: Date = Date()) {
