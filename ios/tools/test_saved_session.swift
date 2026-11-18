@@ -11,8 +11,13 @@ struct SavedSessionTests {
             fatalError("Run on an isolated CI runner, never a user's keychain")
         }
         func reset() {
-            for service in ["PicHarbor.gpmc", "PicHarbor.session"] {
-                let status = SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary)
+            // macOS SecItemDelete defaults to one match. Delete each fixture
+            // explicitly so the legacy-slot case cannot inherit another account.
+            for (service, account) in [("PicHarbor.gpmc", "credential"),
+                ("PicHarbor.gpmc", "alice@example.test"), ("PicHarbor.gpmc", "bob@example.test"),
+                ("PicHarbor.session", "activeAccount")] {
+                let status = SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: service, kSecAttrAccount as String: account] as CFDictionary)
                 precondition(status == errSecSuccess || status == errSecItemNotFound, "Test Keychain reset failed")
             }
             UserDefaults.standard.removeObject(forKey: "activeAccount")
@@ -67,6 +72,6 @@ struct SavedSessionTests {
         precondition(legacyAccounts.isEmpty, "Legacy slot must not appear as a named account")
         let legacy = try KeychainStore.load()
         precondition(legacy == "legacy-secret", "Original credential slot still migrates")
-        print("PASS: 23 saved-session selection, recovery, logout and Keychain checks")
+        print("PASS: 25 saved-session selection, recovery, logout and Keychain checks")
     }
 }
