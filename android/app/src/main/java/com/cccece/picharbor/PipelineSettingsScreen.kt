@@ -31,9 +31,9 @@ fun PipelineSettingsScreen(vm:HarborViewModel,data:HarborUiData) {
     val execution=remember(data.settings.account,data.settings.executionPolicy){runCatching{JSONObject(data.settings.executionPolicy)}.getOrDefault(JSONObject())}
     var customProtection by rememberSaveable(data.settings.account){mutableStateOf(execution.length()>0)}
     var protection by rememberSaveable(data.settings.account){mutableStateOf(ArrayList(executionKeys.mapIndexed{i,key->execution.optInt(key,executionDefaults[i]).toString()}))}
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize()) {
         PageTitle("高级配置",vm)
-        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             ToggleRow("使用自定义配置","自动模式根据设备资源调整",custom,enabled=!vm.busy){custom=it}
             if(custom)keys.forEachIndexed{i,_->OutlinedTextField(fields[i],{value->fields=ArrayList(fields).apply{this[i]=value}},label={LText(titles[i])},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),isError=fields[i].toIntOrNull() !in ranges[i],supportingText={LText("${ranges[i].first}–${ranges[i].last}",localize=false)},modifier=Modifier.fillMaxWidth())}
             Helper("准备照片 1–3，上传检查、保存与配对、云端确认 1–4，文件上传 1–12，缓存 128–8192 MB。")

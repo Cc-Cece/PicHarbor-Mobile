@@ -52,7 +52,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData,sheetMode:Boolean=false) {
     var information by rememberSaveable(media.id){mutableStateOf(false)}
     val context=LocalView.current.context
     val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize()) {
         PageTitle("照片详情",vm,close=sheetMode,action={
             IconButton(onClick={information=true}){LIcon(Icons.Outlined.Info,"详情")}
             IconButton(onClick={
@@ -63,6 +63,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData,sheetMode:Boolean=false) {
                 if(!context.openProductIntent(android.content.Intent.createChooser(intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION),"")))vm.say("暂时无法打开此页面")
             }){LIcon(Icons.Outlined.Share,"分享")}
         })
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         if(media.video||playingLive)VideoPlayer(if(playingLive)pair?.id?:media.id else media.id,autoplay=playingLive) else {
             var scale by remember(media.id){mutableFloatStateOf(1f)}
             var x by remember(media.id){mutableFloatStateOf(0f)};var y by remember(media.id){mutableFloatStateOf(0f)}
@@ -83,6 +84,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData,sheetMode:Boolean=false) {
             data.itemMap[media.id]?.let{item->SettingsRow(phaseLabel(item.state),icon=Icons.Outlined.History,onClick={vm.showItem(item)})}
 
         }
+    }
     }
     if(filename)FilenameSheet(media.name){filename=false}
     if(information)ProductBottomSheet("照片详情",{information=false}){MediaInformationContent(vm,data)}
