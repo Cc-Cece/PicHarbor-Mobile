@@ -71,6 +71,7 @@
 "云端原件状态尚未通过完整核验，原件会保留。" = "The cloud original has not passed verification. Your local original is kept.";
 "云端原件访问" = "Cloud original access";
 "云端哈希确认仅证明查询时存在对应内容，不代表原始质量、完整资产或安全清理资格。重选同一照片可验证查重；重启后重新连接同一账号可验证记录保留。" = "A hash match only proves that content was present when checked. It does not prove original quality, completeness, or cleanup eligibility. Select the same photo to test deduplication; reconnect after restarting to check record persistence.";
+"云端存在多个同名相册，请先在 Google 相册整理后重试归类" = "Multiple cloud albums have the same name. Organize them in Google Photos before retrying album organization.";
 "云端已存在 · 已查重" = "Already saved in the cloud";
 "云端暂未按内容哈希确认，请稍后重新核验。" = "The cloud content has not been confirmed yet. Check again later.";
 "云端未找到相同内容，原件会保留。" = "No matching cloud content was found. Your local original is kept.";
@@ -134,6 +135,7 @@
 "保存修改" = "Save Changes";
 "保存后继续等待动态处理" = "Wait for motion processing after saving";
 "保留原任务设置及批次，重新读取照片并查重。旧任务保留为已取消，本机及云端照片均保留。" = "Read the photo again with the same settings and batch. The old task is kept as canceled. Local and cloud photos are kept.";
+"保留相册分类" = "Keep album organization";
 "修改已保存，节点内容需更新后生效。" = "Changes saved. Update the subscription to refresh its nodes.";
 "修改设置后需重新检查。检查未通过的照片会保留。" = "Check again after changing settings. Photos that do not pass are kept.";
 "停止加入" = "Stop adding";
@@ -299,6 +301,7 @@
 "将发送 {0} 项到电脑" = "{0} items will be sent to the computer";
 "将发送当前照片范围，不需要 Google 账号。" = "This sends the current photo scope and does not need a Google account.";
 "将备份" = "To back up";
+"将新备份的照片加入 Google 相册中的对应相册。复用已有相册，不同步本机的删除或重命名。只对新任务生效。" = "Add new backups to matching Google Photos albums. Existing albums are reused; local deletions and renames are not synchronized. Applies to new tasks only.";
 "将本机相簿同步到 Google 相册。从本机相簿移除照片，不会删除云端内容。只对新任务生效。" = "Sync local albums to Google Photos. Removing an album member does not delete cloud content. Applies to new tasks only.";
 "将照片和动态视频合成一个文件备份。同机查看时可能出现两张。" = "Combine the photo and motion video into one backup file. Two copies may appear on the same device.";
 "将电脑上的连接二维码放入取景框" = "Place the computer connection QR code in the frame";
@@ -549,6 +552,7 @@
 "正在查询云端内容" = "Checking cloud content";
 "正在校验资源导出" = "Checking photo export";
 "正在核对所选项目并请求系统删除" = "Checking selection and requesting deletion";
+"正在核对相册创建结果，请稍后重试归类，不会重复创建" = "Checking the album creation result. Retry album organization later; another album will not be created.";
 "正在核验或清理照片，完成后可连接账号。" = "Photos are being checked or removed. Connect an account when finished.";
 "正在核验或清理照片，请等待完成后再操作账号。" = "Photos are being checked or removed. Wait before changing accounts.";
 "正在检查节点…" = "Checking nodes…";

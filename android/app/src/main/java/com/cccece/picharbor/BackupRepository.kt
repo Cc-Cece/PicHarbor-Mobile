@@ -27,8 +27,8 @@ data class TransferProgress(val job:String="",val item:String="",val name:String
 data class CleanupEvidenceItem(val taskId:String,val mediaId:String,val cloudConfirmed:Boolean,val confirmedAt:Long)
 
 class BackupRepository(private val graph:AppGraph) {
-    private suspend fun requireAvailableVersions(policy:String) {
-        val result=graph.harborCore.dispatch("select_versions",JSONObject().put("policy",policy)
+    private suspend fun requireAvailableVersions() {
+        val result=graph.harborCore.dispatch("select_versions",JSONObject().put("policy","current")
             .put("available",org.json.JSONArray().put("current")).put("has_edits",JSONObject.NULL))
         if(!result.optBoolean("ok"))throw EngineFailure(result.optString("error","ENGINE_ERROR"))
     }
@@ -173,7 +173,7 @@ class BackupRepository(private val graph:AppGraph) {
         if(graph.switching.value)throw EngineFailure("ACCOUNT_CHANGED")
         val settings=graph.preferences.get()
         if(settings.account.isEmpty())throw EngineFailure("LOGIN_REQUIRED")
-        requireAvailableVersions(settings.editPolicy)
+        requireAvailableVersions()
         val known=graph.dao.backups(settings.account).associateBy{it.mediaId}
         val allMedia=identifiedMedia()
         val explicit=ids?.map { id -> allMedia.firstOrNull{it.id==id}?.takeIf{it.video}?.let{LivePhotoPairing.findPhotoPartner(it,allMedia)?.id}?:id }?.toSet()
@@ -210,7 +210,7 @@ class BackupRepository(private val graph:AppGraph) {
             }
         }
         val job=BackupJob(UUID.randomUUID().toString(),settings.account,System.currentTimeMillis(),automatic,allowMobile=allowMobile,
-            albumMode=settings.albumMode,albumValue=settings.albumValue,quality=settings.quality,liveStrategy=settings.livePhotoPairing,editPolicy=settings.editPolicy,strictConfirmation=settings.strictConfirmation)
+            albumMode=settings.albumMode,albumValue=settings.albumValue,quality=settings.quality,liveStrategy=settings.livePhotoPairing,editPolicy="current",strictConfirmation=settings.strictConfirmation)
         val selected=ArrayList<String>();var created=0;var reused=0
         graph.database.withTransaction {
             for(media in candidates) {
@@ -579,7 +579,7 @@ class BackupRepository(private val graph:AppGraph) {
         if(item.remoteKey.isNotBlank()&&(item.state=="waiting_confirmation"||savedTask?.optBoolean("cloud_confirmed")==true&&savedTask.optString("state")!="done")) {
             finishStrictConfirmation(job,item,cancelled);return
         }
-        try {requireAvailableVersions(job.editPolicy)} catch(error:EngineFailure) {
+        try {requireAvailableVersions()} catch(error:EngineFailure) {
             graph.dao.putItem(item.copy(state="failed",error=error.code,attempt=item.attempt+1));return
         }
         val embeddedMotion=identified.pairingID==LivePhotoPairing.EMBEDDED_MOTION
@@ -679,7 +679,7 @@ class BackupRepository(private val graph:AppGraph) {
             fun resource(value:MediaEntry)=JSONObject().put("uri",value.id).put("name",value.name)
             val request=JSONObject().put("size",group.photo.size+video.size).put("_diagnostics",DiagnosticContext(job=job.id,item=item.id).json()).put("_account",job.account).put("task_id",item.id).put("photo",resource(group.photo)).put("video",resource(video))
                 .put("quality",job.quality).put("strategy",job.liveStrategy).put("created",group.photo.captured).put("modified",group.photo.modified)
-                .put("album_mode",job.albumMode).put("album_value",job.albumValue).put("folder",group.photo.albumFolder)
+                .put("album_mode",job.albumMode).put("album_value",job.albumValue).put("folder",group.photo.albumFolder).put("album_local_id",group.photo.folderKey)
             if(job.liveStrategy=="motion")keyframeUs(video)?.let{request.put("keyframe_us",it)}
             graph.dao.putItem(item.copy(state="uploading"))
             val result=graph.engine.call("process_pair",request,EngineCallback(cancelled){event->
@@ -917,7 +917,7 @@ class BackupRepository(private val graph:AppGraph) {
         try {
             if(cancelled())throw EngineFailure("CANCELLED")
             graph.engine.call("sync_album",JSONObject().put("_diagnostics",DiagnosticContext(job=job.id,item=item.id).json()).put("_account",job.account).put("remote_key",key)
-                .put("album_mode",job.albumMode).put("album_value",job.albumValue).put("folder",media.albumFolder),EngineCallback(cancelled))
+                .put("album_mode",job.albumMode).put("album_value",job.albumValue).put("folder",media.albumFolder).put("album_local_id",media.folderKey),EngineCallback(cancelled))
             return true
         } catch(error:Exception) {
             graph.dao.putItem(item.copy(state="album_pending",remoteKey=key,error=(error as? EngineFailure)?.code?:"ENGINE_ERROR",attempt=item.attempt+1))
@@ -934,7 +934,7 @@ class BackupRepository(private val graph:AppGraph) {
             if(before.first!=media.size||before.second!=media.modified)throw EngineFailure("SOURCE_CHANGED")
             graph.dao.putItem(item.copy(state="hashing"))
             val request=JSONObject().put("task_id",item.id).put("size",media.size).put("_diagnostics",diagnostic.json()).put("_account",job.account).put("uri",media.id).put("name",media.name).put("modified",media.modified)
-                .put("folder",media.albumFolder).put("quality",job.quality).put("album_mode",job.albumMode).put("album_value",job.albumValue)
+                .put("folder",media.albumFolder).put("album_local_id",media.folderKey).put("quality",job.quality).put("album_mode",job.albumMode).put("album_value",job.albumValue)
                 .put("retries",settings.retries).put("same_name",job.automatic&&settings.sameName)
                 .put("remote_key",item.remoteKey).put("origin",item.origin)
                 .put("lookup_remote_key",lookupRemoteKey).put("lookup_fresh",lookupFresh)

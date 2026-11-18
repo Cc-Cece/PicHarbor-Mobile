@@ -343,14 +343,10 @@ class MobileService:
         if mode=='existing' and title:
             self.client.add_to_existing_album([remote_key],title)
         elif mode in ('folder','custom') and title:
+            from gpmc.album_registry import ensure_album
             with diag.observed_lock(self.sync_lock,'sync_lock'):
-                with closing(sqlite3.connect(self.db_path)) as db:
-                    found=db.execute('SELECT album_key FROM albums WHERE title=? ORDER BY album_key LIMIT 1',(title,)).fetchone()
-                if found:self.client.add_to_existing_album([remote_key],found[0])
-                else:
-                    key=self.client.api.create_album(title,[remote_key])
-                    with closing(sqlite3.connect(self.db_path)) as db,db:
-                        db.execute('INSERT OR REPLACE INTO albums VALUES(?,?)',(key,title))
+                ensure_album(self.client.api, self.home / 'album-registry.sqlite3', self.account,
+                    item.get('album_local_id') or mode + ':' + title, title, [remote_key])
 
     def pair_result(self,value,resources,key,callback):
         result={'state':'done','remote_key':key,'photo':resources['photo'],'video':resources['video']}
@@ -614,45 +610,9 @@ class MobileService:
         return {"eligible": True, "reason": "", "remote_key": key, "policy": policy, **digest}
 
     def account_profile(self, callback=None):
-        """Optional identity display, using only the existing Photos bearer token."""
         self.check(callback)
-        def bounded(response, limit):
-            if response.status_code != 200: return None
-            data = bytearray()
-            for chunk in response.iter_content(8192):
-                self.check(callback)
-                data.extend(chunk)
-                if len(data) > limit: return None
-            return bytes(data)
-        with requests.Session() as session:
-            with session.get("https://openidconnect.googleapis.com/v1/userinfo",
-                    headers={"Authorization": "Bearer " + self.client.api.bearer_token},
-                    timeout=(3, 5), allow_redirects=False, stream=True) as response:
-                body = bounded(response, 65536)
-            if body is None: return {"available": False}
-            profile = json.loads(body)
-            subject = profile.get("sub")
-            if not isinstance(subject, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,255}", subject): return {"available": False}
-            email = profile.get("email")
-            if email is not None and (not isinstance(email, str) or email.strip().lower() != self.account): return {"available": False}
-            name = profile.get("name", "")
-            name = name.strip() if isinstance(name, str) else ""
-            if len(name) > 100 or any(ord(c) < 32 for c in name): name = ""
-            result = {"available": True, "account": self.account, "subject": subject, "name": name}
-            url = profile.get("picture", "")
-            parsed = urlparse(url) if isinstance(url, str) else None
-            if parsed and parsed.scheme == "https" and not parsed.username and not parsed.password and parsed.port in (None,443) and parsed.hostname and (parsed.hostname == "googleusercontent.com" or parsed.hostname.endswith(".googleusercontent.com")):
-                self.check(callback)
-                # No Authorization header, cookies, redirects or original URL in the result.
-                # Use a fresh session so the identity request cannot contribute cookies.
-                try:
-                    with requests.Session() as images:
-                        with images.get(url, timeout=(3,5), allow_redirects=False, stream=True) as response:
-                            image = bounded(response, 512 * 1024) if response.headers.get("Content-Type", "").lower().startswith("image/") else None
-                    if image: result["avatar_base64"] = base64.b64encode(image).decode("ascii")
-                except requests.exceptions.RequestException:
-                    pass
-            return result
+        from gpmc.account_profile import account_profile
+        return account_profile(self.client.api, self.account)
 
 
     def dispatch(self, action, payload, bridge=None, callback=None):

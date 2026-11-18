@@ -11,7 +11,7 @@ struct HarborSettingsView: View {
             Section {
                 NavigationLink { AccountListView() } label: {
                     HStack(spacing: 14) {
-                        Image(systemName: "person.crop.circle.fill").font(.system(size: 40)).foregroundStyle(.blue)
+                        AccountAvatarView(account: model.account)
                         VStack(alignment: .leading, spacing: 5) { Text(model.account.isEmpty ? L10n.text("连接 Google 账号") : model.account).font(.headline).lineLimit(1); Text(L10n.text("凭据仅保存在本机钥匙串")).font(.caption).foregroundStyle(.secondary) }
                     }.padding(.vertical, 8)
                 }.accessibilityIdentifier("settings.account")
@@ -38,7 +38,7 @@ struct HarborSettingsView: View {
                 NavigationLink { MobileDiagnosticsView() } label: { Label(L10n.text("诊断"), systemImage: "stethoscope") }
                 NavigationLink { AboutView() } label: { Label(L10n.text("关于 PicHarbor"), systemImage: "info.circle") }
             }
-        }.navigationTitle(L10n.text("设置"))
+        }.navigationTitle(L10n.text("设置")).task(id: model.account) { await AccountAvatars.shared.refresh(model.engine, account: model.account) }
         .alert(L10n.text("恢复默认设置？"), isPresented: $restore) {
             Button(L10n.text("恢复默认设置"), role: .destructive) { Task { await model.restorePreferenceDefaults() } }
             Button(L10n.text("取消"), role: .cancel) {}
@@ -73,8 +73,8 @@ struct BackupPreferencesView: View {
                 Picker(L10n.text("版本保留"), selection: $model.settings.edits) { ForEach(EditPolicy.allCases) { Text($0.title).tag($0) } }
             } header: { Text(L10n.text("编辑过的照片与视频")) } footer: { Text(L10n.text("同时保留修改前后的内容；内容相同只备份一份。不保留撤销编辑的记录。")) }
             Section {
-                Toggle(L10n.text("单向同步相簿"), isOn: $model.settings.syncAlbums)
-            } footer: { Text(L10n.text("将本机相簿同步到 Google 相册。从本机相簿移除照片，不会删除云端内容。只对新任务生效。")) }
+                Toggle(L10n.text("保留相册分类"), isOn: $model.settings.syncAlbums)
+            } footer: { Text(L10n.text("将新备份的照片加入 Google 相册中的对应相册。复用已有相册，不同步本机的删除或重命名。只对新任务生效。")) }
             Section { NavigationLink(L10n.text("高级备份检查")) { AdvancedBackupChecksView() } }
         }.navigationTitle(L10n.text("备份偏好")).navigationBarTitleDisplayMode(.inline)
         .onChange(of: model.settings) { _, _ in Task { await model.saveSettings() } }
@@ -186,7 +186,7 @@ struct AccountListView: View {
         List {
             Section(L10n.text("本机账号")) {
                 ForEach(model.accounts, id: \.self) { account in
-                    Button { Task { await model.switchAccount(account) } } label: { HStack { Label(account, systemImage: "person.crop.circle").foregroundStyle(.primary); Spacer(); if account == model.account { Image(systemName: "checkmark") } } }
+                    Button { Task { await model.switchAccount(account) } } label: { HStack { AccountAvatarView(account: account, size: 32); Text(account).foregroundStyle(.primary); Spacer(); if account == model.account { Image(systemName: "checkmark") } } }
                         .disabled(model.engine.busy)
                 }
                 NavigationLink { ConnectionView() } label: { Label(L10n.text("添加 Google 账号"), systemImage: "plus") }

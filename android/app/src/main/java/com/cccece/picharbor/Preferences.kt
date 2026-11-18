@@ -25,7 +25,7 @@ data class HarborSettings(
      * as "original"); the per-account profile only restores a value saved
      * for that account. */
     val livePhotoPairing:String="original",
-    val editPolicy:String="both", val strictConfirmation:Boolean=false,
+    val editPolicy:String="current", val strictConfirmation:Boolean=false,
     val pipelineMode:String="automatic",val pipelineLimits:String="",val executionPolicy:String="",
     val archiveEnabled:Boolean=true, val archiveDays:Int=14, val language:String="system",
     val activitySource:String="all",val activityStatus:String="all",val activityGrouping:String="batch",val archiveSource:String="all",
@@ -55,7 +55,7 @@ class Preferences(private val context: Context) {
         account=p[stringPreferencesKey("account")]?:"",bootSession=p[intPreferencesKey("bootSession")]?:-1,
         allFolders=p[booleanPreferencesKey("allFolders")]?:true,
         livePhotoPairing=p[stringPreferencesKey("livePhotoPairing")]?:"original",
-        editPolicy=p[stringPreferencesKey("editPolicy")]?:"both",
+        editPolicy="current",
         strictConfirmation=p[booleanPreferencesKey("strictConfirmation")]?:false,
         pipelineMode=p[stringPreferencesKey("pipelineMode")]?:"automatic",
         pipelineLimits=p[stringPreferencesKey("pipelineLimits")]?:"",

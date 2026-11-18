@@ -887,3 +887,8 @@ HTTP 或 HTTPS 订阅链接|HTTP or HTTPS subscription URL
 开启自动备份|Enable automatic backup
 菜单名称和位置可能因版本或语言有所不同。|Menu names and locations may vary by version or language.
 请在 Google 相册中登录与 PicHarbor 备份时相同的 Google 账号。|Sign in to Google Photos with the same Google Account you use for backups in PicHarbor.
+
+保留相册分类|Keep album organization
+将新备份的照片加入 Google 相册中的对应相册。复用已有相册，不同步本机的删除或重命名。只对新任务生效。|Add new backups to matching Google Photos albums. Existing albums are reused; local deletions and renames are not synchronized. Applies to new tasks only.
+云端存在多个同名相册，请先在 Google 相册整理后重试归类|Multiple cloud albums have the same name. Organize them in Google Photos before retrying album organization.
+正在核对相册创建结果，请稍后重试归类，不会重复创建|Checking the album creation result. Retry album organization later; another album will not be created.

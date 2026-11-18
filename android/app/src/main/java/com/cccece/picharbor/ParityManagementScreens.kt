@@ -33,7 +33,7 @@ fun UnifiedSettingsScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()-
         ProductSection {
             Surface(onClick={vm.navigate("accounts")},color=MaterialTheme.colorScheme.surfaceContainerLow) {
                 Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-                    LIcon(Icons.Outlined.AccountCircle,null,Modifier.size(40.dp),MaterialTheme.colorScheme.primary)
+                    AccountAvatar(data.settings.account)
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                         LText(data.settings.account.ifEmpty{"连接 Google 账号"},localize=data.settings.account.isEmpty(),style=MaterialTheme.typography.titleMedium,maxLines=1)
                         LText("凭据仅保存在本机安全存储",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -143,7 +143,7 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
     if(selecting)ProductBottomSheet(if(archived)"选择取消归档" else "选择归档",{selecting=false}) {
         LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp)) {
             items(archivable,key={it.id}){item->
-                NativeCheckRow(item.name,item.id in selected,localized=false){selected=if(it)selected+item.id else selected-item.id}
+                NativeCheckRow(item.name,item.id in selected,localized=false,filename=true){selected=if(it)selected+item.id else selected-item.id}
             }
         }
         Button(onClick={vm.archiveSelected(archivable.filter{it.id in selected}.map{it.id},archived);selecting=false},enabled=!vm.busy&&archivable.any{it.id in selected},modifier=Modifier.fillMaxWidth()){LText("完成")}

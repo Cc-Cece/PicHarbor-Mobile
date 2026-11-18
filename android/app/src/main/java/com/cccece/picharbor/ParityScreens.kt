@@ -144,10 +144,10 @@ fun NativeChoiceRow(title:String,selected:Boolean,enabled:Boolean=true,localized
 }
 
 @Composable
-fun NativeCheckRow(title:String,checked:Boolean,enabled:Boolean=true,localized:Boolean=true,onChange:(Boolean)->Unit) {
+fun NativeCheckRow(title:String,checked:Boolean,enabled:Boolean=true,localized:Boolean=true,filename:Boolean=false,onChange:(Boolean)->Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(value=checked,enabled=enabled,role=Role.Checkbox,onValueChange=onChange).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
         Checkbox(checked,onCheckedChange=null,enabled=enabled)
-        LText(title,modifier=Modifier.weight(1f),localize=localized)
+        if(filename)FilenameText(title,Modifier.weight(1f)) else LText(title,modifier=Modifier.weight(1f),localize=localized)
     }
 }
 
@@ -234,7 +234,7 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
 
 @Composable
 fun BackupConfirmation(vm:HarborViewModel,data:HarborUiData,title:String,count:Int,onDismiss:()->Unit,onConfirm:()->Unit) {
-    AlertDialog(onDismissRequest=onDismiss,title={LText(title)},text={Column {LText("${count} 项");LText(qualityName(data.settings.quality));LText(livePhotoLabel(data.settings.livePhotoPairing));LText(editPolicyLabel(data.settings.editPolicy))}},confirmButton={TextButton(onClick=onConfirm,enabled=!vm.busy){LText("开始备份")}},dismissButton={TextButton(onClick=onDismiss){LText("取消")}})
+    AlertDialog(onDismissRequest=onDismiss,title={LText(title)},text={Column {LText("${count} 项");LText(qualityName(data.settings.quality));LText(livePhotoLabel(data.settings.livePhotoPairing))}},confirmButton={TextButton(onClick=onConfirm,enabled=!vm.busy){LText("开始备份")}},dismissButton={TextButton(onClick=onDismiss){LText("取消")}})
 }
 
 @Composable
@@ -285,10 +285,7 @@ fun SettingsScreen(vm:HarborViewModel,data:HarborUiData) {
         ProductSection {ProductPicker("并发模式",s.pipelineMode,listOf("automatic" to "自动","custom" to "自定义"),!vm.busy,description="自动模式根据设备资源调整，自定义参数可在高级配置中设置。"){vm.setString("pipelineMode",it)};if(s.pipelineMode=="custom")SettingsRow("高级配置",onClick={vm.navigate("pipeline")})}
         ProductSection("上传画质") {ProductPicker("上传画质",s.quality,listOf("original" to "不计配额原画质","quota" to "计配额原画质","saver" to "节省空间"),!vm.busy,description="是否占用空间，以 Google 相册显示为准。",optionDescriptions=mapOf("original" to "保留原始清晰度，使用当前免配额上传方式","quota" to "使用 Google 账号存储空间","saver" to "可能压缩照片和视频")){vm.setString("quality",it)}}
         ProductSection("Live Photo 备份方式") {ProductPicker("备份方式",s.livePhotoPairing,listOf("original" to "原始照片配对","stepwise" to "原始照片配对（分步上传）","motion" to "动态照片封装"),!vm.busy,description="切换方式只影响新任务，已有照片不会自动重新上传。",optionDescriptions=mapOf("original" to "照片与视频配对，按一个媒体项目备份并一次确认","stepwise" to "先保存照片，再关联动态视频","motion" to "单个文件内嵌动态视频，按单文件备份")){vm.setString("livePhotoPairing",it)}}
-        ProductSection("编辑过的照片与视频") {
-            SettingsRow("版本保留",editPolicyLabel(s.editPolicy),onClick={vm.sheet="edit-policy"}){LIcon(Icons.Outlined.ExpandMore,null)}
-        }
-        ProductSection(footer="将本机相簿同步到 Google 相册。从本机相簿移除照片，不会删除云端内容。只对新任务生效。") {ToggleRow("单向同步相簿","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
+        ProductSection(footer="按来源文件夹将新备份的照片加入 Google 相册中的对应相册。复用已有相册，不同步本机的删除或重命名。只对新任务生效。") {ToggleRow("保留相册分类","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
         ProductSection {SettingsRow("高级备份检查",onClick={vm.navigate("checks")})}
     }
 }
@@ -322,7 +319,10 @@ fun FoldersScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,on
             if(s.account.isEmpty())SettingsRow("请先连接 Google 账号",onClick={vm.navigate("accounts")})
         }
         ProductSection("Android 存储访问") {
-            SettingsRow("管理相册访问",onClick=onPermissions)
+            if(vm.graph.media.fullAccess()) {
+                ProductValue("照片与视频权限","已允许访问所有照片和视频")
+                SettingsRow("照片访问权限",onClick={vm.navigate("permissions")})
+            } else SettingsRow(if(vm.graph.media.hasAccess())"更改可访问的照片" else "允许访问照片与视频",onClick=onPermissions)
             SettingsRow("添加文件夹 / SD 卡",onClick=onPickTree)
             s.trees.filter{tree->folders.none{it.folderKey==tree}}.forEach{SettingsRow("已授权文件夹暂不可用","可能为空、存储卡已拔出或权限失效",onClick=onPickTree)}
         }
@@ -355,7 +355,7 @@ fun AccountsScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
     var logout by remember{mutableStateOf(false)}
     ProductPage("账号",vm) {
         ProductSection("本机账号") {
-            accounts.forEach{account->SettingsRow(account.email,enabled=!vm.busy,onClick={if(account.needsLogin)vm.navigate("connection") else vm.selectAccount(account.email)}){if(account.email==data.settings.account)LIcon(Icons.Outlined.Check,null)}}
+            accounts.forEach{account->SettingsRow(account.email,enabled=!vm.busy,onClick={if(account.needsLogin)vm.navigate("connection") else vm.selectAccount(account.email)},leading={AccountAvatar(account.email,Modifier.size(32.dp))}){if(account.email==data.settings.account)LIcon(Icons.Outlined.Check,null)}}
             SettingsRow("添加 Google 账号",icon=Icons.Outlined.Add,onClick={vm.navigate("connection")})
         }
         if(vm.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -392,7 +392,7 @@ fun PermissionsScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Uni
     ProductPage("相册访问",vm) {
         ProductSection(footer="有限授权仅显示和备份已授权内容。权限减少不会被视为照片已经删除。") {
             ProductValue("当前权限",if(vm.graph.media.fullAccess())"完整访问" else if(vm.graph.media.hasAccess())"有限访问" else "未授权")
-            ProductAction(if(vm.graph.media.hasAccess())"管理已授权内容" else "允许访问相册",onClick=onPermissions)
+            if(!vm.graph.media.fullAccess())ProductAction(if(vm.graph.media.hasAccess())"更改可访问的照片" else "允许访问照片与视频",onClick=onPermissions)
             ProductAction("打开系统设置"){if(!context.openProductIntent(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}"))))vm.say("暂时无法打开此页面")}
         }
         ProductSection("Android 存储访问") {SettingsRow("添加文件夹 / SD 卡",onClick=onPickTree)}

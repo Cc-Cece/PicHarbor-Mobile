@@ -1435,5 +1435,22 @@
   "玫瑰红": "Rose",
   "青绿色": "Teal",
   "琥珀色": "Amber",
-  "自动使用系统动态配色（Android 12 及以上）；手动可选择主题色。": "Automatic uses system dynamic colors on Android 12 or later. Manual lets you choose a theme color."
+  "自动使用系统动态配色（Android 12 及以上）；手动可选择主题色。": "Automatic uses system dynamic colors on Android 12 or later. Manual lets you choose a theme color.",
+  "保留相册分类": "Keep album organization",
+  "按来源文件夹将新备份的照片加入 Google 相册中的对应相册。复用已有相册，不同步本机的删除或重命名。只对新任务生效。": "Add new backups to matching Google Photos albums by source folder. Existing albums are reused; local deletions and renames are not synchronized. Applies to new tasks only.",
+  "将新备份的照片加入 Google 相册中的对应相册。复用已有相册，不同步本机的删除或重命名。只对新任务生效。": "Add new backups to matching Google Photos albums. Existing albums are reused; local deletions and renames are not synchronized. Applies to new tasks only.",
+  "云端存在多个同名相册，请先在 Google 相册整理后重试归类": "Multiple cloud albums have the same name. Organize them in Google Photos before retrying album organization.",
+  "正在核对相册创建结果，请稍后重试归类，不会重复创建": "Checking the album creation result. Retry album organization later; another album will not be created.",
+  "从图片识别二维码": "Scan QR code from image",
+  "允许使用相机": "Allow camera access",
+  "允许使用相机以扫描二维码。": "Allow camera access to scan QR codes.",
+  "允许访问照片与视频": "Allow photo and video access",
+  "关闭手电筒": "Turn off flashlight",
+  "打开手电筒": "Turn on flashlight",
+  "将二维码放入取景框，识别后自动返回。也可以从图片导入。": "Place the QR code in the viewfinder. This screen closes when recognized. You can also import an image.",
+  "已允许访问所有照片和视频": "All photos and videos are accessible",
+  "更改可访问的照片": "Change accessible photos",
+  "照片与视频权限": "Photo and video access",
+  "照片访问权限": "Photo access permissions",
+  "相机暂不可用，请重试或从图片导入。": "Camera unavailable. Retry or import an image."
 }

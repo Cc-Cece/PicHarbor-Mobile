@@ -97,6 +97,8 @@ class Engine(private val context:Context) {
 
 object Messages {
     fun error(code:String)=when(code) {
+        "ALBUM_NAME_AMBIGUOUS"->"云端存在多个同名相册，请先在 Google 相册整理后重试归类"
+        "ALBUM_CREATION_PENDING"->"正在核对相册创建结果，请稍后重试归类，不会重复创建"
         "LOGIN_REQUIRED"->"账号需要重新登录"
         "ENCRYPTED_TOKEN"->"Google 返回了暂不支持的登录凭据，请重新登录"
         "DEVICE_VERIFICATION"->"Google 需要额外验证，请重新登录"

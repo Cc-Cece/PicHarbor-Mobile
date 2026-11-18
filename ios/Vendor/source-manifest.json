@@ -93,6 +93,14 @@
       "sha256": "283f7343bad5e795307c59db7dd2d92a529545278e776ca8978bd098897ea47f"
     },
     {
+      "path": "gpmc/account_profile.py",
+      "sha256": "71e4c58b597bf4cd43aeacb102311355c6e766d34a4f10aa2170fecc4b5c7213"
+    },
+    {
+      "path": "gpmc/album_registry.py",
+      "sha256": "a7611294c19a43e47e590f2adcc9993c57459f9bc1667c43b5e550788169fa83"
+    },
+    {
       "path": "gpmc/api.py",
       "sha256": "104070e5185c7a75a0d01a7d2a47e15c8ef01982ce87158410dd9262a531bd8a"
     },
@@ -182,7 +190,7 @@
     },
     {
       "path": "gpmc/protocol.py",
-      "sha256": "11cb3e07fdf9ea7fe0bb5115806e43497fe818a4df900b4a4f1cfc3740879b14"
+      "sha256": "ff5445d471782db64d8f178ec42c217fa19a4d0c4e3c9e1daeec9d731551d0e0"
     },
     {
       "path": "gpmc/proxy_selection.py",

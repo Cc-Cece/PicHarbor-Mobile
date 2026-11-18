@@ -369,6 +369,7 @@ final class HarborModel: ObservableObject {
             await autoArchive(force: true)
             for receipt in receipts { await receive(receipt) }
             await applyNetworkSettings()
+            Task { await AccountAvatars.shared.refresh(engine, account: account) }
             await library.refresh()
             await pump()
             timer = Task { [weak self] in
@@ -519,6 +520,7 @@ final class HarborModel: ObservableObject {
         switching = false
         await applyNetworkSettings()
         await replayReceipts(); await automaticScan(); await pump()
+        if connected { Task { await AccountAvatars.shared.refresh(engine, account: account) } }
         return connected && connectionError.isEmpty
     }
     func switchAccount(_ value: String) async {
@@ -532,7 +534,9 @@ final class HarborModel: ObservableObject {
         switching = true
         await pauseAll()
         while !workers.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
+        let previousAccount = account
         await engine.logout()
+        if account.isEmpty { AccountAvatars.shared.remove(previousAccount) }
         if !account.isEmpty { notice = engine.message }
         do { accounts = try KeychainStore.accounts(); try await loadSettings() } catch { notice = error.localizedDescription }
         switching = false
@@ -1454,14 +1458,16 @@ final class HarborModel: ObservableObject {
         let keys = Array(Set(job.resources.map(\.remoteKey))).sorted()
         for local in job.albumIDs {
             try checkpoint(job)
-            if let map = mappings.first(where: { $0.account == job.account && $0.localID == local }) {
-                _ = try await engine.invoke("add_to_album", ["account": job.account, "remote_key": map.remoteID, "keys": keys])
-            } else {
-                guard let album = library.albums.first(where: { $0.id == local }) else { throw HarborError("ALBUM_UNAVAILABLE") }
-                let response = try await engine.invoke("create_album", ["account": job.account, "title": album.title, "keys": keys])
-                guard let key = response["remote_key"] as? String else { throw HarborError("INVALID_RESPONSE") }
+            let existing = mappings.first { $0.account == job.account && $0.localID == local }
+            let title = library.albums.first { $0.id == local }?.title
+            guard title != nil || existing != nil else { throw HarborError("ALBUM_UNAVAILABLE") }
+            let response = try await engine.invoke("ensure_album", ["account": job.account, "local_id": local,
+                "title": title ?? local, "keys": keys, "remote_key": existing?.remoteID ?? ""])
+            guard let key = response["remote_key"] as? String, !key.isEmpty else { throw HarborError("INVALID_RESPONSE") }
+            if existing?.remoteID != key {
                 let map = AlbumMapping(account: job.account, localID: local, remoteID: key)
-                try await store.save(map, kind: "album", id: job.account + ":" + local); mappings.append(map)
+                try await store.save(map, kind: "album", id: job.account + ":" + local)
+                mappings.removeAll { $0.account == job.account && $0.localID == local }; mappings.append(map)
             }
         }
         } catch { await albumGate.release(); throw error }

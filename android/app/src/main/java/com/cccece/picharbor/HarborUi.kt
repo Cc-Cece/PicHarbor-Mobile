@@ -223,12 +223,12 @@ fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,close:Boolean=f
 
 }
 @Composable
-fun SettingsRow(title:String,subtitle:String="",icon:ImageVector?=null,enabled:Boolean=true,onClick:()->Unit,trailing:@Composable (()->Unit)?=null) {
+fun SettingsRow(title:String,subtitle:String="",icon:ImageVector?=null,enabled:Boolean=true,onClick:()->Unit,leading:@Composable (()->Unit)?=null,trailing:@Composable (()->Unit)?=null) {
     val content=MaterialTheme.colorScheme.onSurface.copy(alpha=if(enabled)1f else .38f)
     val secondary=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=if(enabled)1f else .38f)
     Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).clickable(enabled=enabled,role=Role.Button,onClick=onClick)
         .heightIn(min=if(subtitle.isEmpty())56.dp else 72.dp).padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-        if(icon!=null)LIcon(icon,null,tint=if(enabled)MaterialTheme.colorScheme.primary else content,modifier=Modifier.size(24.dp))
+        if(leading!=null)leading() else if(icon!=null)LIcon(icon,null,tint=if(enabled)MaterialTheme.colorScheme.primary else content,modifier=Modifier.size(24.dp))
         Column(Modifier.weight(1f)){LText(title,style=MaterialTheme.typography.bodyLarge,color=content);if(subtitle.isNotEmpty())LText(subtitle,style=MaterialTheme.typography.bodySmall,color=secondary,modifier=Modifier.padding(top=3.dp))}
         CompositionLocalProvider(LocalContentColor provides secondary) {
             if(trailing!=null)trailing() else LIcon(Icons.Outlined.ChevronRight,null,tint=secondary,modifier=Modifier.size(20.dp))
@@ -282,15 +282,22 @@ fun backupHeading(vm:HarborViewModel,data:HarborUiData):Pair<String,String> = wh
 }
 
 @Composable
-fun Avatar(account:String,onClick:()->Unit){Surface(onClick=onClick,color=MaterialTheme.colorScheme.tertiaryContainer,shape=CircleShape,modifier=Modifier.size(40.dp)){
+fun Avatar(account:String,onClick:()->Unit) {
+    Surface(onClick=onClick,color=MaterialTheme.colorScheme.surfaceContainerLow,shape=CircleShape,modifier=Modifier.size(40.dp)) {
+        AccountAvatar(account)
+    }
+}
+
+@Composable
+fun AccountAvatar(account:String,modifier:Modifier=Modifier.size(40.dp)) {
     val accounts by (LocalContext.current.applicationContext as PicHarborApp).graph.credentials.accounts.collectAsState()
     val profile=accounts.firstOrNull{it.email==account}
-    Box(contentAlignment=Alignment.Center){
-        LText(if(account.isEmpty())"?" else (profile?.displayName?.ifBlank{account}?:account).first().uppercase(),fontWeight=FontWeight.SemiBold)
+    Box(modifier.clip(CircleShape),contentAlignment=Alignment.Center) {
+        LIcon(Icons.Outlined.AccountCircle,null,Modifier.fillMaxSize(),MaterialTheme.colorScheme.primary)
         if(!profile?.avatarPath.isNullOrBlank())AsyncImage(ImageRequest.Builder(LocalContext.current).data(java.io.File(profile!!.avatarPath))
             .memoryCacheKey("avatar:$account:${profile.profileCheckedAt}").diskCachePolicy(coil.request.CachePolicy.DISABLED).build(),null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
     }
-}}
+}
 
 fun phaseLabel(phase:String)=when(phase){
     "done"->"已上传";"exists"->"云端已有相同内容";"queued"->"等待处理"

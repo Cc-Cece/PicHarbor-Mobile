@@ -166,7 +166,7 @@ private struct AutomaticBackupIndicator: View {
             Image(systemName: enabled ? "checkmark.circle.fill" : "pause.circle")
                 .foregroundStyle(enabled ? Color.green : Color.secondary).accessibilityHidden(true)
             Text(L10n.text("自动备份"))
-            Text(L10n.text(enabled ? "已开启" : "未开启")).foregroundStyle(.secondary)
+            Text(enabled ? L10n.text("已开启") : L10n.text("未开启")).foregroundStyle(.secondary)
         }
         .font(.caption).padding(.horizontal, 10).padding(.vertical, 7)
         .background(.quaternary, in: Capsule())

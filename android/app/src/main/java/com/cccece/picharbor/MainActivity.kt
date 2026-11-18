@@ -16,7 +16,10 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.*
 
 class MainActivity:ComponentActivity() {
-    private val qrCamera=registerForActivityResult(com.journeyapps.barcodescanner.ScanContract()){result->result.contents?.let{model.acceptScan(listOf(it))}}
+    private val qrCamera=registerForActivityResult(ActivityResultContracts.StartActivityForResult()){result->
+        if(result.resultCode==Activity.RESULT_OK)result.data?.getStringExtra(QrScannerActivity.CONTENT)?.let{model.acceptScan(listOf(it))}
+        else if(result.resultCode==Activity.RESULT_FIRST_USER)qrImage.launch("image/*")
+    }
     private val qrImage=registerForActivityResult(ActivityResultContracts.GetContent()){uri->
         if(uri!=null)lifecycleScope.launch {
             val values=withContext(Dispatchers.IO){runCatching {
@@ -63,7 +66,7 @@ class MainActivity:ComponentActivity() {
         model.restoreNavigation(savedInstanceState?.getString("mobile_navigation"))
         enableEdgeToEdge()
         model.proxyFilePicker={proxyFile.launch(arrayOf("*/*"))}
-        model.scanner={image->if(image)qrImage.launch("image/*") else qrCamera.launch(com.journeyapps.barcodescanner.ScanOptions().setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE).setPrompt(localizedMobileText(model.settings.value.language,"扫描二维码")).setBeepEnabled(false))}
+        model.scanner={image->if(image)qrImage.launch("image/*") else qrCamera.launch(Intent(this,QrScannerActivity::class.java))}
         if(savedInstanceState!=null)reportRange=LogRange(savedInstanceState.getLong("log_start",Long.MIN_VALUE),savedInstanceState.getLong("log_end",Long.MAX_VALUE),savedInstanceState.getString("log_zone")?:java.time.ZoneId.systemDefault().id)
         if(intent.getBooleanExtra("open_history",false))model.tab("activity")
         lifecycleScope.launch {

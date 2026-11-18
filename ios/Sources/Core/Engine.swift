@@ -8,6 +8,8 @@ struct HarborError: LocalizedError {
     var errorDescription: String? {
         if code == "PROXY_START_FAILED", let detail, !detail.isEmpty { return L10n.text("代理启动失败：{0}", [detail]) }
         switch code {
+        case "ALBUM_NAME_AMBIGUOUS": return L10n.text("云端存在多个同名相册，请先在 Google 相册整理后重试归类")
+        case "ALBUM_CREATION_PENDING": return L10n.text("正在核对相册创建结果，请稍后重试归类，不会重复创建")
         case "LOGIN_REQUIRED": return L10n.text("需要重新登录 Google，或服务端要求额外验证。")
         case "INVALID_CREDENTIAL": return L10n.text("登录凭据无效。")
         case "ACCOUNT_BUSY": return L10n.text("正在连接或切换账号，请等待当前操作完成。")
