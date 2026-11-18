@@ -94,11 +94,11 @@
     },
     {
       "path": "gpmc/account_profile.py",
-      "sha256": "71e4c58b597bf4cd43aeacb102311355c6e766d34a4f10aa2170fecc4b5c7213"
+      "sha256": "4b029d1832d8f1e5e1f36523f65e27973224757b038dfc3f8d9c2f392178f689"
     },
     {
       "path": "gpmc/album_registry.py",
-      "sha256": "a7611294c19a43e47e590f2adcc9993c57459f9bc1667c43b5e550788169fa83"
+      "sha256": "54704cd58c969b7f85409c6566bff3fd2b037197805c4035bcd1c7232a0b05ce"
     },
     {
       "path": "gpmc/api.py",
