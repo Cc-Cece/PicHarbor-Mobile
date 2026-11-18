@@ -16,7 +16,9 @@ Android `2.0.0-alpha.7` / iOS `0.2.31` 对齐备份卡片的整体速度、剩�
 
 Android `2.0.0-alpha.8` / iOS `0.2.32` 更新释放空间指引与同账号提示，统一 Android 底部选项面板，并支持点击自动备份状态直达开关，见 [界面调整记录](specs/NATIVE-OPTIONS-CLEANUP-2026-11-18.md)。
 
-最新版本 Android `2.0.0-alpha.10` / iOS `0.2.34` 增加持久化相册去重和本机账号头像；移除 Android 版本保留，重做媒体权限入口及竖屏扫码页，并包含上一轮文件名、底部面板、滚动标题和 Material 配色优化，见 [本轮记录](specs/ALBUMS-AVATARS-NATIVE-2026-11-18.md)。
+Android `2.0.0-alpha.10` / iOS `0.2.34` 增加持久化相册去重和本机账号头像；移除 Android 版本保留，重做媒体权限入口及竖屏扫码页，并包含上一轮文件名、底部面板、滚动标题和 Material 配色优化，见 [实现记录](specs/ALBUMS-AVATARS-NATIVE-2026-11-18.md)。
+
+最新版本 Android `2.0.0-alpha.11` / iOS `0.2.35` 简化相册分类说明；Android 调整节点选择备注、关于页和诊断日期排版，见 [文案与排版记录](specs/COPY-DATE-ABOUT-2026-11-18.md)。本轮按要求只编译、不安装。
 
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
 
