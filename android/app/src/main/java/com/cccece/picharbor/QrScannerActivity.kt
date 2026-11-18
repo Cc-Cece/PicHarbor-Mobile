@@ -89,7 +89,7 @@ class QrScannerActivity: ComponentActivity() {
                                 else if(denied&&!shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) {
                                     startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:$packageName")))
                                 } else permission.launch(Manifest.permission.CAMERA)
-                            }) {LText(if(failed)"重试" else if(denied)"打开系统设置" else "允许使用相机")}
+                            }) {LText(if(failed)"重试" else if(denied&&!shouldShowRequestPermissionRationale(Manifest.permission.CAMERA))"打开系统设置" else "允许使用相机")}
                         }
                     }
                 }
