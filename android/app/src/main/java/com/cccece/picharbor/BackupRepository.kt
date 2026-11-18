@@ -38,7 +38,13 @@ class BackupRepository(private val graph:AppGraph) {
         val item=graph.dao.item(id)?:return
         if(item.account!=graph.preferences.get().account)return
         val job=graph.dao.job(item.jobId)?:return
-        if(item.state in setOf("done","exists","cancelled"))return
+        if(item.state=="cancelled") {
+            // Already stopped: only hide the activity record, without restarting
+            // transport, re-transitioning a terminal core task or altering evidence.
+            if(action=="remove")graph.dao.hideCancelledItem(id,item.account)
+            return
+        }
+        if(item.state in setOf("done","exists"))return
         val task=graph.harborCore.task(id)
         when(action) {
             "pause"->{suspendedItems.add(id);task?.let{graph.harborCore.transition(it,"paused")};graph.dao.putItem(item.copy(state="paused"))}

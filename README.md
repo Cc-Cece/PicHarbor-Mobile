@@ -20,6 +20,8 @@ Android `2.0.0-alpha.10` / iOS `0.2.34` 增加持久化相册去重和本机账�
 
 最新版本 Android `2.0.0-alpha.11` / iOS `0.2.35` 简化相册分类说明；Android 调整节点选择备注、关于页和诊断日期排版，见 [文案与排版记录](specs/COPY-DATE-ABOUT-2026-11-18.md)。本轮按要求只编译、不安装。
 
+Android 后续修复版 `2.0.0-alpha.12` 允许从菜单、批次、左滑及详情中移除已取消的未完成任务，见 [修复记录](specs/CANCELLED-ACTIVITY-REMOVAL-2026-11-18.md)。iOS 保持 `0.2.35`，本轮只编译、不安装。
+
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
 
 ## Development

@@ -78,12 +78,13 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
     var limit by rememberSaveable{mutableIntStateOf(200)}
     LaunchedEffect(source,status){vm.graph.preferences.string(if(archived)"archiveSource" else "activitySource",source);if(!archived)vm.graph.preferences.string("activityStatus",status)}
     val allItems=remember(data.items){data.items.filter{!it.hidden}.groupBy{it.jobId}}
-    val visible=remember(allItems,archived,status){allItems.mapValues{(_,rows)->rows.filter{(it.archivedAt>0)==archived&&(status=="all"||(it.state in setOf("done","exists"))==(status=="completed")&&it.state!="cancelled")}}}
+    val visible=remember(allItems,archived,status){allItems.mapValues{(_,rows)->rows.filter{(it.archivedAt>0)==archived&&ActivityItemPolicy.matchesStatus(it,status)}}}
     val jobs=remember(data.jobs,visible,source){data.jobs.filter{!it.hidden&&(source=="all"||it.automatic==(source=="automatic"))&&!visible[it.id].isNullOrEmpty()}}
     val locale=androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val formatter=remember(locale){java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.SHORT).withLocale(locale).withZone(java.time.ZoneId.systemDefault())}
     val matchingItems=remember(jobs,visible){jobs.flatMap{visible[it.id].orEmpty()}}
     val pending=remember(jobs,visible){matchingItems.filter{it.state !in setOf("done","exists","cancelled")}.map{it.id}}
+    val removable=remember(jobs,visible){matchingItems.filter(ActivityItemPolicy::canRemove).map{it.id}}
     val paused=remember(jobs,visible){matchingItems.filter{it.state=="paused"}.map{it.id}}
     val retryable=remember(jobs,visible){matchingItems.filter{it.state in setOf("failed","album_pending","waiting_confirmation")}.map{it.id}}
     val complete=remember(jobs,visible){jobs.filter{visible[it.id].orEmpty().any{it.state in setOf("done","exists")}}.map{it.id}}
@@ -97,7 +98,7 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
                         DropdownMenuItem(text={LText("继续暂停任务")},enabled=paused.isNotEmpty(),onClick={menu=false;vm.itemActions(paused,"resume")})
                         DropdownMenuItem(text={LText("重试全部异常任务")},enabled=!vm.busy&&retryable.isNotEmpty(),onClick={menu=false;vm.itemActions(retryable,"resume")})
                         DropdownMenuItem(text={LText("归档记录")},onClick={menu=false;vm.navigate("archives")})
-                        DropdownMenuItem(text={LText("停止并移除未完成")},enabled=pending.isNotEmpty(),onClick={menu=false;remove=true})
+                        DropdownMenuItem(text={LText("停止并移除未完成")},enabled=removable.isNotEmpty(),onClick={menu=false;remove=true})
                     }
                     DropdownMenuItem(text={LText(if(archived)"取消归档全部" else "归档已完成")},enabled=complete.isNotEmpty(),onClick={menu=false;vm.archiveSelected(archivable.map{it.id},archived)})
                     DropdownMenuItem(text={LText(if(archived)"选择取消归档" else "选择归档")},enabled=archivable.isNotEmpty(),onClick={menu=false;selected=emptySet();selecting=true})
@@ -112,7 +113,7 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
                 val matching=visible[job.id].orEmpty()
                 val all=allItems[job.id].orEmpty()
                 val completed=matching.all{it.state in setOf("done","exists")}
-                val unfinished=matching.filter{it.state !in setOf("done","exists","cancelled")}
+                val unfinished=matching.filter(ActivityItemPolicy::canRemove)
                 val swipeLabel=if(completed)if(archived)"取消归档" else "归档" else if(unfinished.isNotEmpty())"移除" else ""
                 ActivitySwipeRow(job.id,swipeLabel,!completed,!vm.busy,revealed,{revealed=it},{
                     if(completed)vm.archiveSelected(matching.map{it.id},archived) else rowRemoval=unfinished.map{it.id}
@@ -136,7 +137,7 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
             if(jobs.size>limit)item{TextButton(onClick={limit+=200}){LText("显示更多")}}
         }
     }
-    if(remove)AlertDialog(onDismissRequest={remove=false},title={LText("移除未完成任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={remove=false;vm.itemActions(pending,"remove")}){LText("停止并移除")}},dismissButton={TextButton(onClick={remove=false}){LText("取消")}})
+    if(remove)AlertDialog(onDismissRequest={remove=false},title={LText("移除未完成任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={remove=false;vm.itemActions(removable,"remove")}){LText("停止并移除")}},dismissButton={TextButton(onClick={remove=false}){LText("取消")}})
     if(rowRemoval.isNotEmpty())AlertDialog(onDismissRequest={rowRemoval=emptyList()},title={LText("移除此任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},
         confirmButton={TextButton(enabled=!vm.busy,onClick={val ids=rowRemoval.filter{it in pending};rowRemoval=emptyList();vm.itemActions(ids,"remove")},colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){LText("停止并移除")}},
         dismissButton={TextButton(onClick={rowRemoval=emptyList()}){LText("取消")}})

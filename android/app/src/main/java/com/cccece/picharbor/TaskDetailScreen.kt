@@ -58,8 +58,8 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
                     else if(item.state in setOf("paused","failed"))ProductAction(if(item.state=="paused")"继续" else "重试",Icons.Outlined.PlayArrow,!vm.busy){vm.itemAction(item.id,"resume")}
                     else ProductAction("暂停",Icons.Outlined.Pause,!vm.busy){vm.itemAction(item.id,"pause")}
                     ProductAction("取消任务",enabled=!vm.busy,destructive=true){cancel=true}
-                    ProductAction("移除未完成任务",enabled=!vm.busy,destructive=true){remove=true}
                 }
+                if(ActivityItemPolicy.canRemove(item))ProductAction("移除未完成任务",enabled=!vm.busy,destructive=true){remove=true}
             }
             ProductSection {ProductAction("高级信息",Icons.Outlined.Info){advanced=true}}
         }

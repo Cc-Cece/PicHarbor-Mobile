@@ -58,6 +58,8 @@ interface HarborDao {
     @Upsert suspend fun suppress(asset: SuppressedAsset)
     @Query("UPDATE jobs SET archivedAt=:at,unarchivedAt=CASE WHEN :at=0 THEN :now ELSE unarchivedAt END WHERE id=:id AND state='completed'") suspend fun archiveJob(id: String,at: Long,now: Long=System.currentTimeMillis())
     @Query("UPDATE jobs SET hidden=1 WHERE id=:id") suspend fun hideJob(id: String)
+    @Query("UPDATE items SET hidden=1 WHERE id=:id AND account=:account AND state='cancelled'")
+    suspend fun hideCancelledItem(id:String,account:String):Int
     @Query("UPDATE items SET archivedAt=:at,unarchivedAt=CASE WHEN :at=0 THEN :now ELSE unarchivedAt END WHERE id=:id AND state IN ('done','exists')") suspend fun archiveItem(id:String,at:Long,now:Long=System.currentTimeMillis())
     @Query("SELECT * FROM media ORDER BY captured DESC, id") fun mediaFlow(): Flow<List<MediaEntry>>
     @Query("SELECT * FROM media ORDER BY captured DESC") suspend fun media(): List<MediaEntry>

@@ -283,7 +283,7 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     fun resumeBatch(ids:List<String>)=action { graph.backup.resumeJobs(ids); graph.scheduler.launchManual() }
     fun removeBatch(ids:List<String>)=action {
         ids.forEach { id ->
-            graph.dao.items(id).filter{it.state !in setOf("done","exists","cancelled")}.forEach{graph.backup.itemAction(it.id,"remove")}
+            graph.dao.items(id).filter(ActivityItemPolicy::canRemove).forEach{graph.backup.itemAction(it.id,"remove")}
             if(graph.dao.items(id).all{it.hidden})graph.dao.hideJob(id)
         }
     }
