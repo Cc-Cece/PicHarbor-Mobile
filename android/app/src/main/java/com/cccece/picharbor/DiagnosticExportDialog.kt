@@ -40,8 +40,8 @@ fun DiagnosticExportDialog(onDismiss:()->Unit,onExport:(LogRange)->Unit) {
             Choice("全部",!custom,"当前仍保留的全部日志"){custom=false}
             Choice("自定义日期",custom,"包含起止日期当天"){custom=true}
             if(custom)TextButton(onClick={calendar=true}){LText(label,localize=false)}
-            LText("日期按 ${zone.id} 计算。日志最多保留 14 天或 64 MiB，较早记录可能已自动覆盖。",style=MaterialTheme.typography.bodySmall)
-            LText("已脱敏；包含运行信息和文件名，不包含照片或视频本体、账号、密码及登录凭据。",style=MaterialTheme.typography.bodySmall)
+            Helper("日期按 ${zone.id} 计算。日志最多保留 14 天或 64 MiB，较早记录可能已自动覆盖。")
+            Helper("已脱敏；包含运行信息和文件名，不包含照片或视频本体、账号、密码及登录凭据。")
         }
         Button(enabled=!custom||range!=null,onClick={onExport(if(custom)range!! else LogRange(zone=zone.id))},modifier=Modifier.fillMaxWidth()){LText("导出")}
     }

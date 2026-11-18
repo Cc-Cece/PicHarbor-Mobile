@@ -37,7 +37,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
+fun DetailScreen(vm:HarborViewModel,data:HarborUiData,sheetMode:Boolean=false) {
     val locale=androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val selected=vm.activeMedia
     if(selected==null) {
@@ -49,11 +49,12 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
     val pair=remember(media,data.media){if(media.video)null else LivePhotoPairing.findPair(media,data.media)}
     var playingLive by remember(media.id){mutableStateOf(false)}
     var filename by rememberSaveable(media.id){mutableStateOf(false)}
+    var information by rememberSaveable(media.id){mutableStateOf(false)}
     val context=LocalView.current.context
     val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        PageTitle("照片详情",vm,action={
-            IconButton(onClick={vm.navigate("information")}){LIcon(Icons.Outlined.Info,"详情")}
+        PageTitle("照片详情",vm,close=sheetMode,action={
+            IconButton(onClick={information=true}){LIcon(Icons.Outlined.Info,"详情")}
             IconButton(onClick={
                 val sources=arrayListOf(Uri.parse(media.id)).apply{if(pair!=null)add(Uri.parse(pair.id))}
                 val intent=if(sources.size>1)android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).setType("*/*").putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM,sources)
@@ -74,7 +75,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
             }
         }
         Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(13.dp)) {
-            TextButton(onClick={filename=true}){LText(media.name,localize=false,style=MaterialTheme.typography.titleMedium,maxLines=1)}
+            TextButton(onClick={filename=true},modifier=Modifier.fillMaxWidth()){FilenameText(media.name,Modifier.weight(1f),MaterialTheme.typography.titleMedium)}
             LText(Instant.ofEpochMilli(media.captured).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM).withLocale(locale)),localize=false)
             LText(formatSize(media.size+(pair?.size?:0))+" · "+if(pair!=null||media.pairingID==LivePhotoPairing.EMBEDDED_MOTION)"Live Photo" else if(media.video)localize("视频") else localize("照片"),localize=false,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(pair!=null||media.pairingID==LivePhotoPairing.EMBEDDED_MOTION)TextButton(onClick={playingLive=!playingLive}){LText(if(playingLive)"显示静态照片" else "播放实况")}
@@ -83,7 +84,8 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData) {
 
         }
     }
-    if(filename)AlertDialog(onDismissRequest={filename=false},title={LText("完整文件名")},text={androidx.compose.foundation.text.selection.SelectionContainer{Column(Modifier.verticalScroll(rememberScrollState())){LText(media.name,localize=false)}}},confirmButton={TextButton(onClick={filename=false}){LText("完成")}},dismissButton={TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(media.name))}){LText("复制文件名")}})
+    if(filename)FilenameSheet(media.name){filename=false}
+    if(information)ProductBottomSheet("照片详情",{information=false}){MediaInformationContent(vm,data)}
 
 }
 @Composable

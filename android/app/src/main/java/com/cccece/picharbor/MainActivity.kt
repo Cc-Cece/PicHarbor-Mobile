@@ -73,10 +73,10 @@ class MainActivity:ComponentActivity() {
             val settings by model.settings.collectAsState()
             MobileLocale(settings.language) {
             var logDialog by remember { mutableStateOf(false) }
-            if(logDialog)DiagnosticExportDialog(onDismiss={logDialog=false},onExport={range->
+            if(logDialog)PicHarborTheme(settings){DiagnosticExportDialog(onDismiss={logDialog=false},onExport={range->
                 reportRange=range;logDialog=false
                 report.launch("PicHarbor-logs-${java.time.LocalDate.now()}.zip")
-            })
+            })}
             HarborRoot(model,onLogin={login.launch(Intent(this,LoginActivity::class.java))},onPermissions=::requestPermissions,
                 onPickFiles={picker.launch(arrayOf("image/*","video/*"))},onPickTree={tree.launch(null)},
                 onExport={logDialog=true})

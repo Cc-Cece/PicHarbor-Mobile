@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -48,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -56,6 +59,8 @@ import coil.request.ImageRequest
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private val LocalPageScrollBehavior=staticCompositionLocalOf<TopAppBarScrollBehavior?>{null}
 
 data class HarborUiData(val settings:HarborSettings,val media:List<MediaEntry>,val backups:List<BackupRecord>,val jobs:List<BackupJob>,
     val items:List<BackupItem>,val transfer:TransferProgress,val activeJob:String,
@@ -138,8 +143,10 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
                     (enter togetherWith fadeOut(tween(180,easing=FastOutSlowInEasing))).using(null)
                 },label="content-transition") { (currentTab,page,key) ->
                     pageState.SaveableStateProvider(key) {
+                        val scrollBehavior=if(page in rootPages)TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState()) else null
+                        CompositionLocalProvider(LocalPageScrollBehavior provides scrollBehavior) {
                         val padding=Modifier.padding(bottom=if(showBottomBar)barHeight else 0.dp).statusBarsPadding().then(if(showBottomBar)Modifier else Modifier.navigationBarsPadding()).imePadding()
-                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(padding)) {
+                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).then(padding).then(if(scrollBehavior!=null)Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier)) {
                             when(page) {
                                 "photos"->PhotosScreen(vm,data,onPermissions,onPickFiles)
                                 "backup"->BackupScreen(vm,data,onLogin)
@@ -175,6 +182,7 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
                             }
                             if(vm.busy&&!hasStatus)LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
                         }
+                        }
                     }
                 }
                 // This single navigation bar stays mounted for all four root tabs.
@@ -198,11 +206,20 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
 }
 
 @Composable
-fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,action:@Composable RowScope.()->Unit={}) {
-    if(root)Column(Modifier.fillMaxWidth().padding(start=20.dp,end=16.dp,bottom=12.dp)) {
-        Row(Modifier.fillMaxWidth().heightIn(min=36.dp),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically,content=action)
-        LText(title,style=MaterialTheme.typography.headlineLarge,color=MaterialTheme.colorScheme.onBackground,modifier=Modifier.padding(top=6.dp).semantics{heading()})
-    } else TopAppBar(title={LText(title)},navigationIcon={IconButton(onClick=vm::back){LIcon(Icons.AutoMirrored.Outlined.ArrowBack,"返回")}},actions=action,windowInsets=WindowInsets(0,0,0,0))
+fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,close:Boolean=false,navigation:@Composable ()->Unit={},action:@Composable RowScope.()->Unit={}) {
+    if(root) {
+        val behavior=LocalPageScrollBehavior.current
+        val collapsed=behavior?.state?.collapsedFraction?:0f
+        Box {
+            LargeTopAppBar(title={LText(title,modifier=Modifier.graphicsLayer{alpha=(1-collapsed*1.6f).coerceIn(0f,1f)}.semantics{if(collapsed>=.5f)invisibleToUser() else heading()})},
+                navigationIcon=navigation,actions=action,scrollBehavior=behavior,windowInsets=WindowInsets(0,0,0,0),
+                colors=TopAppBarDefaults.largeTopAppBarColors(containerColor=MaterialTheme.colorScheme.background,scrolledContainerColor=MaterialTheme.colorScheme.background))
+            if(collapsed>.35f)Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal=72.dp),contentAlignment=Alignment.Center) {
+                LText(title,style=MaterialTheme.typography.titleLarge,maxLines=1,overflow=TextOverflow.Ellipsis,
+                    modifier=Modifier.graphicsLayer{alpha=((collapsed-.35f)/.65f).coerceIn(0f,1f)}.semantics{if(collapsed<.5f)invisibleToUser() else heading()})
+            }
+        }
+    } else CenterAlignedTopAppBar(title={LText(title,maxLines=1,overflow=TextOverflow.Ellipsis)},navigationIcon={IconButton(onClick=vm::back){LIcon(if(close)Icons.Outlined.Close else Icons.AutoMirrored.Outlined.ArrowBack,if(close)"关闭" else "返回")}},actions=action,windowInsets=WindowInsets(0,0,0,0))
 
 }
 @Composable

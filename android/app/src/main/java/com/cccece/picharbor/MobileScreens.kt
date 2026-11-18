@@ -21,6 +21,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -69,6 +74,29 @@ fun InterfaceScreen(vm:HarborViewModel,data:HarborUiData) {
         }
         ProductSection("外观") {
             ProductPicker("外观",data.settings.theme,listOf("system" to "跟随系统","light" to "浅色","dark" to "深色")){vm.setString("theme",it)}
+        }
+        ProductSection("主题色") {
+            val automatic=data.settings.palette=="system"
+            ProductPicker("配色方式",if(automatic)"automatic" else "manual",listOf("automatic" to "自动","manual" to "手动"),description="自动使用系统动态配色（Android 12 及以上）；手动可选择主题色。"){mode->
+                vm.setString("palette",if(mode=="automatic")"system" else if(automatic)"lavender" else data.settings.palette)
+            }
+            if(!automatic)MaterialPalettePicker(data.settings.palette,vm)
+        }
+    }
+}
+
+@Composable
+private fun MaterialPalettePicker(value:String,vm:HarborViewModel) {
+    val options=listOf(Triple("lavender","薰衣草",Color(0xFF67518E)),Triple("sage","鼠尾草",Color(0xFF386652)),Triple("peach","暖杏",Color(0xFF8C503B)),
+        Triple("blue","晴空蓝",Color(0xFF365E9D)),Triple("rose","玫瑰红",Color(0xFF984061)),Triple("teal","青绿色",Color(0xFF006B5E)),Triple("amber","琥珀色",Color(0xFF795900)))
+    var open by rememberSaveable{mutableStateOf(false)}
+    SettingsRow("主题色",options.firstOrNull{it.first==value}?.second.orEmpty(),onClick={open=true}){LIcon(Icons.Outlined.ExpandMore,null)}
+    if(open)ProductBottomSheet("主题色",{open=false}) {
+        options.forEach{(key,label,color)->
+            Row(Modifier.fillMaxWidth().heightIn(min=56.dp).selectable(value==key,role=Role.RadioButton,onClick={open=false;vm.setString("palette",key)}).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(26.dp).background(color,CircleShape))
+                LText(label,Modifier.weight(1f));RadioButton(value==key,onClick=null)
+            }
         }
     }
 }

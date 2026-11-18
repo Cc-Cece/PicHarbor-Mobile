@@ -30,7 +30,7 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
                 if(media!=null)TextButton(onClick={vm.open(media)}) {
                     AsyncImage(media.id,null,Modifier.size(56.dp));Spacer(Modifier.width(12.dp));LText("预览照片")
                 }
-                ProductAction(item.name,onClick={filename=true})
+                TextButton(onClick={filename=true},modifier=Modifier.fillMaxWidth().padding(8.dp)){FilenameText(item.name,Modifier.weight(1f))}
                 ProductValue("备份状态",phaseLabel(item.state))
                 ProductValue("确认方式",if(job?.strictConfirmation==true)"保存后继续等待动态处理" else "云端保存确认后完成")
             }
@@ -64,10 +64,10 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
             ProductSection {ProductAction("高级信息",Icons.Outlined.Info){advanced=true}}
         }
     }
-    if(advanced&&item!=null)AlertDialog(onDismissRequest={advanced=false},title={LText("高级信息")},text={Column(Modifier.verticalScroll(rememberScrollState())){
+    if(advanced&&item!=null)ProductBottomSheet("高级信息",{advanced=false}) {
         ProductValue("任务标识",item.id,false);ProductValue("文件大小",formatSize(item.bytes));ProductValue("尝试次数",item.attempt.toString())
         if(job!=null){ProductValue("来源",if(job.automatic)"自动" else "手动");ProductValue("上传画质",qualityName(job.quality));ProductValue("Live Photo",livePhotoLabel(job.liveStrategy))}
-    }},confirmButton={TextButton(onClick={advanced=false}){LText("完成")}})
-    if(filename&&item!=null)AlertDialog(onDismissRequest={filename=false},title={LText("完整文件名")},text={androidx.compose.foundation.text.selection.SelectionContainer{Column(Modifier.verticalScroll(rememberScrollState())){LText(item.name,localize=false)}}},confirmButton={TextButton(onClick={filename=false}){LText("完成")}},dismissButton={TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(item.name))}){LText("复制文件名")}})
+    }
+    if(filename&&item!=null)FilenameSheet(item.name){filename=false}
     if((remove||cancel)&&item!=null)AlertDialog(onDismissRequest={remove=false;cancel=false},title={LText(if(remove)"移除此任务？" else "取消任务？")},text={LText("停止处理并保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={vm.itemAction(item.id,if(remove)"remove" else "cancel");remove=false;cancel=false},colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){LText(if(remove)"停止并移除" else "取消任务")}},dismissButton={TextButton(onClick={remove=false;cancel=false}){LText("取消")}})
 }

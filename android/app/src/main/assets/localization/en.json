@@ -1428,5 +1428,12 @@
   "自动模式根据设备资源调整，自定义参数可在高级配置中设置。": "Automatic mode adapts to device resources. Set custom parameters in Advanced settings.",
   "菜单名称和位置可能因版本或语言有所不同。": "Menu names and locations may vary by version or language.",
   "请在 Google 相册中登录与 PicHarbor 备份时相同的 Google 账号。": "Sign in to Google Photos with the same Google Account you use for backups in PicHarbor.",
-  "相册": "Albums"
+  "相册": "Albums",
+  "主题色": "Theme color",
+  "配色方式": "Color mode",
+  "晴空蓝": "Sky blue",
+  "玫瑰红": "Rose",
+  "青绿色": "Teal",
+  "琥珀色": "Amber",
+  "自动使用系统动态配色（Android 12 及以上）；手动可选择主题色。": "Automatic uses system dynamic colors on Android 12 or later. Manual lets you choose a theme color."
 }

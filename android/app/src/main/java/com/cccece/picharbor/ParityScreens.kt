@@ -68,7 +68,7 @@ private fun rememberFolderCounts(data:HarborUiData):Map<String,Int> = remember(d
 @Composable
 fun ProductPage(title:String,vm:HarborViewModel,root:Boolean=false,actions:@Composable RowScope.()->Unit={},content:@Composable ColumnScope.()->Unit) {
     Column(Modifier.fillMaxSize()) {
-        PageTitle(title,vm,root,actions)
+        PageTitle(title,vm,root,action=actions)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             content();Spacer(Modifier.height(8.dp))
         }
@@ -88,13 +88,16 @@ fun ProductSection(title:String="",footer:String="",content:@Composable ColumnSc
 
 @Composable
 fun ProductValue(label:String,value:String,localized:Boolean=true) {
+    var filename by rememberSaveable(value){mutableStateOf(false)}
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
         LText(label,modifier=Modifier.weight(1f));Spacer(Modifier.width(12.dp))
         Box(Modifier.weight(1f),contentAlignment=Alignment.CenterEnd) {
-            if(localized)LText(value,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(!localized&&label in setOf("文件名","动态视频"))TextButton(onClick={filename=true}){FilenameText(value,Modifier.weight(1f),MaterialTheme.typography.bodyMedium)}
+            else if(localized)LText(value,color=MaterialTheme.colorScheme.onSurfaceVariant)
             else SelectionContainer{LText(value,localize=false,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         }
     }
+    if(filename)FilenameSheet(value){filename=false}
 }
 
 @Composable
@@ -115,7 +118,7 @@ fun ProductBottomSheet(title:String,onDismiss:()->Unit,description:String="",con
                 IconButton(onClick=onDismiss){LIcon(Icons.Outlined.Close,"关闭")}
             }
             content()
-            if(description.isNotEmpty())LText(description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(description.isNotEmpty())Helper(description)
         }
     }
 }
@@ -172,14 +175,13 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
         (vm.libraryAlbum.isEmpty()||vm.libraryAlbum in LivePhotoPairing.folders(m,data.media))
     }}
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
+        PageTitle("照片",vm,root=true,navigation={
             Box {IconButton(onClick={mediaMenu=true}){LIcon(Icons.Outlined.FilterAlt,"筛选照片")}
                 if(mediaMenu)ProductBottomSheet("筛选照片",{mediaMenu=false}) {listOf("all" to "全部","photo" to "照片","video" to "视频","live" to "Live Photo").forEach{(id,label)->Choice(label,vm.type==id){vm.type=id;mediaMenu=false}}}
             }
-            Spacer(Modifier.weight(1f))
+        },action={
             TextButton(onClick=vm::toggleSelection){LText(if(vm.selectionMode)"完成" else "选择")}
-        }
-        LText("照片",style=MaterialTheme.typography.headlineLarge,modifier=Modifier.padding(start=20.dp,top=6.dp,bottom=12.dp))
+        })
         if(!vm.graph.media.hasAccess()&&data.logicalMedia.isEmpty()) {
             EmptyState("你的照片，尽在这里","允许访问后，直接浏览并备份照片、视频与 Live Photo。也可以仅授权部分内容。",Icons.Outlined.PhotoLibrary) {
                 Button(onClick=onPermissions){LText("允许访问相册")}
@@ -280,11 +282,11 @@ fun BackupScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
 fun SettingsScreen(vm:HarborViewModel,data:HarborUiData) {
     val s=data.settings
     ProductPage("备份偏好",vm) {
-        ProductSection {ProductPicker("并发模式",s.pipelineMode,listOf("automatic" to "自动","custom" to "自定义"),!vm.busy,description="自动模式根据设备资源调整，自定义参数可在高级配置中设置。"){vm.setString("pipelineMode",it)};SettingsRow("高级配置",onClick={vm.navigate("pipeline")})}
+        ProductSection {ProductPicker("并发模式",s.pipelineMode,listOf("automatic" to "自动","custom" to "自定义"),!vm.busy,description="自动模式根据设备资源调整，自定义参数可在高级配置中设置。"){vm.setString("pipelineMode",it)};if(s.pipelineMode=="custom")SettingsRow("高级配置",onClick={vm.navigate("pipeline")})}
         ProductSection("上传画质") {ProductPicker("上传画质",s.quality,listOf("original" to "不计配额原画质","quota" to "计配额原画质","saver" to "节省空间"),!vm.busy,description="是否占用空间，以 Google 相册显示为准。",optionDescriptions=mapOf("original" to "保留原始清晰度，使用当前免配额上传方式","quota" to "使用 Google 账号存储空间","saver" to "可能压缩照片和视频")){vm.setString("quality",it)}}
         ProductSection("Live Photo 备份方式") {ProductPicker("备份方式",s.livePhotoPairing,listOf("original" to "原始照片配对","stepwise" to "原始照片配对（分步上传）","motion" to "动态照片封装"),!vm.busy,description="切换方式只影响新任务，已有照片不会自动重新上传。",optionDescriptions=mapOf("original" to "照片与视频配对，按一个媒体项目备份并一次确认","stepwise" to "先保存照片，再关联动态视频","motion" to "单个文件内嵌动态视频，按单文件备份")){vm.setString("livePhotoPairing",it)}}
         ProductSection("编辑过的照片与视频") {
-            SettingsRow("版本保留",editPolicyLabel(s.editPolicy),onClick={vm.sheet="edit-policy"})
+            SettingsRow("版本保留",editPolicyLabel(s.editPolicy),onClick={vm.sheet="edit-policy"}){LIcon(Icons.Outlined.ExpandMore,null)}
         }
         ProductSection(footer="将本机相簿同步到 Google 相册。从本机相簿移除照片，不会删除云端内容。只对新任务生效。") {ToggleRow("单向同步相簿","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
         ProductSection {SettingsRow("高级备份检查",onClick={vm.navigate("checks")})}

@@ -121,7 +121,8 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
                     Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         AsyncImage(matching.firstOrNull()?.mediaId,null,Modifier.size(52.dp),contentScale=ContentScale.Crop)
                         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                            LText(if(all.size>1)"备份批次 · ${all.size} 项" else matching.firstOrNull()?.name.orEmpty(),localize=all.size>1,style=MaterialTheme.typography.titleMedium)
+                            if(all.size>1)LText("备份批次 · ${all.size} 项",style=MaterialTheme.typography.titleMedium)
+                            else FilenameText(matching.firstOrNull()?.name.orEmpty(),Modifier.fillMaxWidth(),MaterialTheme.typography.titleMedium)
                             LText(formatter.format(java.time.Instant.ofEpochMilli(job.created)),localize=false,style=MaterialTheme.typography.bodySmall)
                             LText("${all.size} 项 · 已完成 ${all.count{it.state in setOf("done","exists")}} 项",style=MaterialTheme.typography.bodySmall)
                             if(all.size==1)LText(phaseLabel(matching.first().state),style=MaterialTheme.typography.labelSmall)

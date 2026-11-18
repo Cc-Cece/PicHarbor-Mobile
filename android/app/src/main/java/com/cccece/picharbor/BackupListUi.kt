@@ -57,7 +57,7 @@ fun MediaStatusRow(name:String,description:String,media:MediaEntry?,onClick:()->
             if(media?.video==true)LIcon(Icons.Outlined.PlayCircle,null,Modifier.align(Alignment.BottomEnd).size(24.dp),tint=MaterialTheme.colorScheme.primary)
         }
         Column(Modifier.weight(1f)) {
-            LText(name,style=MaterialTheme.typography.bodyMedium,maxLines=2)
+            FilenameText(name,Modifier.fillMaxWidth(),MaterialTheme.typography.bodyMedium)
             LText(description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
         LIcon(Icons.Outlined.ChevronRight,null)

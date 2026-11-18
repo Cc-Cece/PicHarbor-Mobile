@@ -50,7 +50,7 @@ class Preferences(private val context: Context) {
         timeout=(p[intPreferencesKey("timeout")]?:60).coerceIn(30,120), retries=(p[intPreferencesKey("retries")]?:3).coerceIn(0,3),
         sameName=false, folders=p[stringSetPreferencesKey("folders")]?:setOf("@camera"),
         trees=p[stringSetPreferencesKey("trees")]?:emptySet(), theme=p[stringPreferencesKey("theme")]?:"system",
-        palette="system", albumMode=if((p[stringPreferencesKey("albumMode")]?:"none")=="none")"none" else "folder",
+        palette=p[stringPreferencesKey("palette")]?.takeIf{it in setOf("system","lavender","sage","peach","blue","rose","teal","amber")}?:"system", albumMode=if((p[stringPreferencesKey("albumMode")]?:"none")=="none")"none" else "folder",
         albumValue=p[stringPreferencesKey("albumValue")]?:"", mobile=if(p[booleanPreferencesKey("wifi")]!=false)"none" else "all",
         account=p[stringPreferencesKey("account")]?:"",bootSession=p[intPreferencesKey("bootSession")]?:-1,
         allFolders=p[booleanPreferencesKey("allFolders")]?:true,

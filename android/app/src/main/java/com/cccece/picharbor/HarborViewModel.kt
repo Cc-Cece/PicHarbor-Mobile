@@ -176,7 +176,7 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
         navigationForward=false
         stacks.getValue(selectedTab).removeLastOrNull()?.let(::restore)
     }
-    fun open(media:MediaEntry){if(selectionMode&&page=="photos"){select(media.id);return};navigate("detail");activeMediaId=media.id}
+    fun open(media:MediaEntry){if(selectionMode&&page=="photos"){select(media.id);return};activeMediaId=media.id;sheet="photo-detail"}
     fun select(id:String){selectionMode=true;selected=if(id in selected)selected-id else selected+id}
     fun selectAll(ids:List<String>){selectionMode=true;selected=selected+ids}
     fun toggleSelection(){if(selectionMode)clearSelection() else selectionMode=true}

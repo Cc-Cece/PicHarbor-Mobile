@@ -56,7 +56,9 @@ struct BackupPreferencesView: View {
                     if value == .custom && model.settings.pipelineOverrides == nil { model.settings.pipelineOverrides = PipelineProfiles.recommended(model.pipelineDevice) }
                     model.settings.pipelineMode = value
                 })) { ForEach(PipelineMode.allCases, id: \.self) { Text($0.title).tag($0) } }.pickerStyle(.menu)
-                NavigationLink(L10n.text("高级配置")) { PipelineAdvancedView() }
+                if model.settings.pipelineMode == .custom {
+                    NavigationLink(L10n.text("高级配置")) { PipelineAdvancedView() }
+                }
             }
             Section {
                 Picker(L10n.text("上传画质"), selection: $model.settings.quality) { ForEach(UploadQuality.allCases) { Text($0.title).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("preferences.quality")

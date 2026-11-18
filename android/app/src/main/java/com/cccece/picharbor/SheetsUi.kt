@@ -33,6 +33,12 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
     val accounts by vm.accounts.collectAsState()
     val mode=vm.sheet
     if(mode.isEmpty())return
+    if(mode=="photo-detail") {
+        ModalBottomSheet(onDismissRequest={vm.sheet=""},sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+            Box(Modifier.fillMaxWidth().fillMaxHeight(.94f)){DetailScreen(vm,data,sheetMode=true)}
+        }
+        return
+    }
     var input by remember(mode){mutableStateOf(if(mode=="time")data.settings.time else "")}
     var proxyEnabled by remember(mode){mutableStateOf(data.settings.proxyEnabled)}
     var proxyScheme by remember(mode){mutableStateOf(data.settings.proxyScheme)}
@@ -121,7 +127,7 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                     Helper("存储空间是否计入配额，以 Google 相册实际处理结果为准。")
                 }
                 mode=="edit-policy"->{
-                    LText("同时保留修改前后的内容；内容相同只备份一份。不保留撤销编辑的记录。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Helper("同时保留修改前后的内容；内容相同只备份一份。不保留撤销编辑的记录。")
                     Choice("原始与编辑后均保留",data.settings.editPolicy=="both"){vm.setString("editPolicy","both")}
                     Choice("仅原始版本",data.settings.editPolicy=="original","当前图库未提供可验证的编辑前版本",enabled=false){}
                     Choice("仅编辑后版本",data.settings.editPolicy=="current"){vm.setString("editPolicy","current")}
