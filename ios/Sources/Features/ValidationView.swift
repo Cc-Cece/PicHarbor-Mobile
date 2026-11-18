@@ -46,9 +46,7 @@ struct ValidationView: View {
                 }
                 Section(L10n.text("单张原始照片")) {
                     Picker(L10n.text("上传模式"), selection: $quality) {
-                        Text(L10n.text("计配额原画质")).tag("quota")
-                        Text(L10n.text("不计配额原画质")).tag("original")
-                        Text(L10n.text("gpmc 节省空间模式")).tag("saver")
+                        ForEach(UploadQuality.allCases) { option in Text(option.title).tag(option.rawValue) }
                     }.disabled(engine.busy)
                     Text(L10n.text("模式沿用 gpmc 参数，不保证服务端配额结果。暂不支持视频与 Live Photo，也不提供原件删除。"))
                         .font(.caption).foregroundStyle(.secondary)

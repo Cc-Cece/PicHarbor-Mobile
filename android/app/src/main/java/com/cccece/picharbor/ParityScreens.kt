@@ -283,7 +283,7 @@ fun SettingsScreen(vm:HarborViewModel,data:HarborUiData) {
     val s=data.settings
     ProductPage("备份偏好",vm) {
         ProductSection {ProductPicker("并发模式",s.pipelineMode,listOf("automatic" to "自动","custom" to "自定义"),!vm.busy,description="自动模式根据设备资源调整，自定义参数可在高级配置中设置。"){vm.setString("pipelineMode",it)};if(s.pipelineMode=="custom")SettingsRow("高级配置",onClick={vm.navigate("pipeline")})}
-        ProductSection("上传画质") {ProductPicker("上传画质",s.quality,listOf("original" to "不计配额原画质","quota" to "计配额原画质","saver" to "节省空间"),!vm.busy,description="是否占用空间，以 Google 相册显示为准。",optionDescriptions=mapOf("original" to "保留原始清晰度，使用当前免配额上传方式","quota" to "使用 Google 账号存储空间","saver" to "可能压缩照片和视频")){vm.setString("quality",it)}}
+        ProductSection("上传画质") {ProductPicker("上传画质",s.quality,listOf("original" to "原始画质（不占用配额）","saver" to "节省空间（不占用配额）","quota" to "原始画质（占用配额）"),!vm.busy,description="元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。",optionDescriptions=mapOf("original" to "保留原始清晰度，使用当前免配额上传方式","quota" to "使用 Google 账号存储空间","saver" to "可能压缩照片和视频")){vm.setString("quality",it)}}
         ProductSection("Live Photo 备份方式") {ProductPicker("备份方式",s.livePhotoPairing,listOf("original" to "原始照片配对","stepwise" to "原始照片配对（分步上传）","motion" to "动态照片封装"),!vm.busy,description="切换方式只影响新任务，已有照片不会自动重新上传。",optionDescriptions=mapOf("original" to "照片与视频配对，按一个媒体项目备份并一次确认","stepwise" to "先保存照片，再关联动态视频","motion" to "单个文件内嵌动态视频，按单文件备份")){vm.setString("livePhotoPairing",it)}}
         ProductSection(footer="备份时，按手机里的文件夹名称整理到 Google 相册。例如，“相机”里的照片会放进云端的“相机”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改文件夹名称，不会改变云端内容。只对开启后的新备份任务生效。") {ToggleRow("保留相册分类","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
         ProductSection {SettingsRow("高级备份检查",onClick={vm.navigate("checks")})}
@@ -441,7 +441,7 @@ fun AboutScreen(vm:HarborViewModel,data:HarborUiData) {
     ProductPage("关于",vm) {
         ProductSection {
             Column(Modifier.fillMaxWidth().padding(vertical=32.dp,horizontal=16.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                LIcon(Icons.Outlined.CloudUpload,null,Modifier.size(64.dp),MaterialTheme.colorScheme.primary)
+                Image(androidx.compose.ui.res.painterResource(R.drawable.picharbor_brand),contentDescription=null,modifier=Modifier.size(64.dp))
                 Text("PicHarbor",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold)
                 LText("开发版 ${BuildConfig.VERSION_NAME}",color=MaterialTheme.colorScheme.onSurfaceVariant)
             }

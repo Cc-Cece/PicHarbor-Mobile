@@ -1,10 +1,10 @@
 import Foundation
 
 enum UploadQuality: String, Codable, CaseIterable, Identifiable {
-    case original, quota, saver
+    case original, saver, quota
     var id: String { rawValue }
     var title: String {
-        switch self { case .original: return L10n.text("不计配额原画质"); case .quota: return L10n.text("计配额原画质"); case .saver: return L10n.text("节省空间") }
+        switch self { case .original: return L10n.text("原始画质（不占用配额）"); case .quota: return L10n.text("原始画质（占用配额）"); case .saver: return L10n.text("节省空间（不占用配额）") }
     }
 }
 enum LiveStrategy: String, Codable, CaseIterable, Identifiable {

@@ -20,7 +20,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-fun qualityName(value:String)=when(value){"unknown"->"待确认";"saver"->"节省空间";"quota"->"计配额原画质";else->"不计配额原画质"}
+fun qualityName(value:String)=when(value){"unknown"->"待确认";"saver"->"节省空间（不占用配额）";"quota"->"原始画质（占用配额）";else->"原始画质（不占用配额）"}
 fun livePhotoLabel(value:String)=when(value){"motion"->"动态照片封装";"stepwise"->"原始照片配对（分步上传）";else->"原始照片配对"}
 fun editPolicyLabel(value:String)=when(value){"original"->"仅原始版本";"current"->"仅编辑后版本";else->"原始与编辑后均保留"}
 fun albumLabel(s:HarborSettings)=when(s.albumMode){"none"->"不分类";"custom"->"自定义：${s.albumValue}";"existing"->"加入已选择的云端相册";else->"按来源文件夹"}

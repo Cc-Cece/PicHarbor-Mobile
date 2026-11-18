@@ -62,7 +62,7 @@ struct BackupPreferencesView: View {
             }
             Section {
                 Picker(L10n.text("上传画质"), selection: $model.settings.quality) { ForEach(UploadQuality.allCases) { Text($0.title).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("preferences.quality")
-            } header: { Text(L10n.text("上传画质")) } footer: { Text(L10n.text("是否占用空间，以 Google 相册显示为准。")) }
+            } header: { Text(L10n.text("上传画质")) } footer: { Text(L10n.text("元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。")) }
             Section {
                 Picker(L10n.text("备份方式"), selection: $model.settings.live) { ForEach(LiveStrategy.allCases) { Text($0.title).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("preferences.live")
             } header: { Text(L10n.text("Live Photo 备份方式")) } footer: {
@@ -338,7 +338,7 @@ private struct AboutView: View {
         List {
             Section {
                 VStack(spacing: 12) {
-                    Image(systemName: "icloud.and.arrow.up.fill").font(.system(size: 64)).foregroundStyle(.blue)
+                    Image("PicHarborBrand").resizable().scaledToFit().frame(width: 64, height: 64).accessibilityHidden(true)
                     Text("PicHarbor").font(.largeTitle.bold())
                     Text(L10n.text("开发版 {0}", [String(describing: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")])).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity).padding(.vertical, 24)

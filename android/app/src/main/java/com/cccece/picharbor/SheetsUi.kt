@@ -131,10 +131,10 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                     listOf("system" to "系统动态配色","lavender" to "薰衣草","sage" to "鼠尾草","peach" to "暖杏").forEach{(key,label)->Choice(label,data.settings.palette==key){vm.setString("palette",key)}}
                 }
                 mode=="quality"->{
-                    Choice("原始画质",data.settings.quality=="original","保留原始清晰度，使用当前免配额上传方式"){vm.setString("quality","original")}
-                    Choice("节省空间",data.settings.quality=="saver","可能压缩照片和视频"){vm.setString("quality","saver")}
-                    Choice("原始画质（计入配额）",data.settings.quality=="quota","使用 Google 账号存储空间"){vm.setString("quality","quota")}
-                    Helper("存储空间是否计入配额，以 Google 相册实际处理结果为准。")
+                    Choice("原始画质（不占用配额）",data.settings.quality=="original","保留原始清晰度，使用当前免配额上传方式"){vm.setString("quality","original")}
+                    Choice("节省空间（不占用配额）",data.settings.quality=="saver","可能压缩照片和视频"){vm.setString("quality","saver")}
+                    Choice("原始画质（占用配额）",data.settings.quality=="quota","使用 Google 账号存储空间"){vm.setString("quality","quota")}
+                    Helper("元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。")
                 }
                 mode=="live-photo"->{
                     Choice("原始照片配对（分步上传）",data.settings.livePhotoPairing=="stepwise","先保存照片，再关联动态视频"){vm.setString("livePhotoPairing","stepwise")}
