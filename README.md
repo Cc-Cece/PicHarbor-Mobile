@@ -26,6 +26,8 @@ Android `2.0.0-alpha.13` / iOS `0.2.36` 更新上传方式名称、顺序与备�
 
 Android `2.0.0-alpha.14` / iOS `0.2.37` 修复底部面板直接消失，统一原生收起动画、关闭行为和长面板标题；并优化键盘、日期选择、复制反馈及 iOS 表单交互，见 [原生交互检查记录](specs/NATIVE-INTERACTIONS-2026-11-18.md)。只编译、不安装。
 
+Android `2.0.0-alpha.15` / iOS `0.2.38` 增加按资源识别的“自动（推荐）”Live Photo 策略，保留原有形式、冻结每项决策，并将兼容选项移入高级设置，见 [自动 Live Photo 记录](specs/AUTOMATIC-LIVE-PHOTO-2026-11-18.md)。旧设置和任务保留，只编译、不安装。
+
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
 
 ## Development

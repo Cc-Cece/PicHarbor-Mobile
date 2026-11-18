@@ -64,10 +64,13 @@ struct BackupPreferencesView: View {
                 Picker(L10n.text("上传画质"), selection: $model.settings.quality) { ForEach(UploadQuality.allCases) { Text($0.title).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("preferences.quality")
             } header: { Text(L10n.text("上传画质")) } footer: { Text(L10n.text("元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。")) }
             Section {
-                Picker(L10n.text("备份方式"), selection: $model.settings.live) { ForEach(LiveStrategy.allCases) { Text($0.title).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("preferences.live")
+                Picker(L10n.text("备份方式"), selection: Binding(get: { model.settings.live == .automatic ? "automatic" : "manual" }, set: { value in
+                    if value == "automatic" { model.settings.live = .automatic }
+                    else if model.settings.live == .automatic { model.settings.live = .applePair }
+                })) { Text(L10n.text("自动（推荐）")).tag("automatic"); Text(L10n.text("手动")).tag("manual") }.pickerStyle(.menu).accessibilityIdentifier("preferences.live")
+                if model.settings.live != .automatic { NavigationLink(L10n.text("高级实况设置")) { LivePhotoAdvancedView() } }
             } header: { Text(L10n.text("Live Photo 备份方式")) } footer: {
-                Text(model.settings.live == .motion ? L10n.text("将照片和动态视频合成一个文件备份。同机查看时可能出现两张。") : model.settings.live == .applePair ? L10n.text("将原始照片和动态视频一起备份。") : L10n.text("先备份照片，再关联动态视频。"))
-                Text(L10n.text("切换方式只影响新任务，已有照片不会自动重新上传。"))
+                Text(L10n.text("逐项识别并保留原有形式；不会自动转换格式。切换只影响新任务。"))
             }
             Section {
                 Picker(L10n.text("版本保留"), selection: $model.settings.edits) { ForEach(EditPolicy.allCases) { Text($0.title).tag($0) } }
@@ -357,5 +360,23 @@ private struct AboutView: View {
                 }
             }
         }.navigationTitle(L10n.text("关于")).navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct LivePhotoAdvancedView: View {
+    @EnvironmentObject private var model: HarborModel
+    var body: some View {
+        Form {
+            Section {
+                Picker(L10n.text("处理方式"), selection: Binding(get: { model.settings.live == .motion ? "motion" : "pair" }, set: { model.settings.live = $0 == "motion" ? .motion : .applePair })) {
+                    Text(L10n.text("原始照片配对")).tag("pair")
+                    Text(L10n.text("动态照片封装（兼容模式）")).tag("motion")
+                }
+                if model.settings.live != .motion {
+                    Toggle(L10n.text("分步上传（兼容模式）"), isOn: Binding(get: { model.settings.live == .appleReconcile }, set: { model.settings.live = $0 ? .appleReconcile : .applePair }))
+                }
+            } footer: { Text(L10n.text("仅在需要兼容特定照片时手动调整。分步上传只改变提交顺序，不改变照片与视频的配对。切换只影响新任务。")) }
+        }.navigationTitle(L10n.text("高级实况设置")).navigationBarTitleDisplayMode(.inline)
+        .onChange(of: model.settings) { _, _ in Task { await model.saveSettings() } }
     }
 }

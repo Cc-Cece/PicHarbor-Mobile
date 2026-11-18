@@ -55,7 +55,7 @@ fun JobDetailsScreen(vm:HarborViewModel,data:HarborUiData) {
                 ActivitySwipeRow(item.id,label,!completed,!vm.busy,revealed,{revealed=it},{
                     if(completed)vm.archiveItem(item.id,item.archivedAt>0) else rowRemoval=item.id
                 }) {
-                    MediaStatusRow(item.name,"${formatSize(item.bytes)} · ${localize(phaseLabel(item.state))}",media[item.mediaId]){if(revealed==item.id)revealed=null else vm.showItem(item)}
+                    MediaStatusRow(item.name,"${formatSize(item.bytes)} · ${localize(itemPhaseLabel(item))}",media[item.mediaId]){if(revealed==item.id)revealed=null else vm.showItem(item)}
                 }
             }
             if(rows.size>vm.detailLimit)item{TextButton(onClick={vm.detailLimit+=200}){LText("显示更多")}}

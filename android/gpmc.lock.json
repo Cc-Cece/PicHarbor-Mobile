@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "source": "Cc-Cece/gpmc",
-  "source_base_commit": "0e8f7e893effe74f90d1c67e0b8e6c2ee15081ae",
+  "source_base_commit": "780d872fc21128b0cf3d43fc590d9ba980e20012",
   "note": "Content tree is authoritative; base commit may precede local integration changes. Do not edit vendored snapshots.",
-  "source_tree_sha256": "878631115797079f5c1a8676cba0599a7a13a617e4cce3341703b850aa18c94b",
+  "source_tree_sha256": "8768e37aeee153ddaf9fb311296c8e7673649723db3054e2b5e10ea0132ed936",
   "files": {
     "__init__.py": "00c357d41820c1c00fb2f7beec0a1461ee6f88635ac4b7bbb82076841107e0c7",
     "_licenses/GPMC-MIT.txt": "a477cba1ae1b4779086f7f7122b87cabb86f13c66cdfbe2050d2352a7bba6db9",
@@ -25,6 +25,7 @@
     "hash_handler.py": "e52af0f8385de5f8ae37ff153f8d8e5d312324e3216fe3ff602b43a0a97e967f",
     "heif_metadata.py": "5fb147895dc249785e2e391d61646da8598789c205476862a93db8ab69109fb4",
     "live.py": "df24d5fe414542222532dccc9ca7279ef2dd31ab8d3b287e4e5f01e70569b99b",
+    "live_plan.py": "aea766a5692219cb06a60101bded7eef9b3af6a85408e4928e2f7f202980c874",
     "media_access.py": "88dad509d517dc2b5265eb51ea08c0c63fbfdad0623afc4557207097faff11f9",
     "media_identity.py": "503440f1733581a9e4f242de4f607581c42b3f596f76847d3f131969e3c79832",
     "media_versions.py": "79596ad62c96ecfd5af3b25abc26bcfc0758ff3d6d2f731264b1a44167619960",
@@ -33,7 +34,7 @@
     "motion_photo.py": "875d6b9fa9fad480d87ab45dea4f6f8ad50a08ec9dda11ede46ee543e1d8fe17",
     "NOTICE.md": "a6a186cd6229d0cf28d24587676aa7c6016e04e4244791bf35eafe2048a38d9d",
     "pipeline_policy.py": "eebcd315af4a0acf4865f97226c614d56475cf1af791ee26beda065db0906d89",
-    "protocol.py": "ff5445d471782db64d8f178ec42c217fa19a4d0c4e3c9e1daeec9d731551d0e0",
+    "protocol.py": "d7f74695aff0fa6330d63bd67b10942c4048673ecdb3cb4c262458aab5ce07d4",
     "proxy_selection.py": "5c5173b8ed09330b4275e4b46a22588841d54d39e26e538f996df4108921ccd0",
     "utils.py": "8c803c32d6e6fd86a1534fbd92139407673d347c9e16e77e5ba08e1f13b5bcbe"
   },

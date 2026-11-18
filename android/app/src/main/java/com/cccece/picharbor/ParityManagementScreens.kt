@@ -126,7 +126,7 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
                             else FilenameText(matching.firstOrNull()?.name.orEmpty(),Modifier.fillMaxWidth(),MaterialTheme.typography.titleMedium)
                             LText(formatter.format(java.time.Instant.ofEpochMilli(job.created)),localize=false,style=MaterialTheme.typography.bodySmall)
                             LText("${all.size} 项 · 已完成 ${all.count{it.state in setOf("done","exists")}} 项",style=MaterialTheme.typography.bodySmall)
-                            if(all.size==1)LText(phaseLabel(matching.first().state),style=MaterialTheme.typography.labelSmall)
+                            if(all.size==1)LText(itemPhaseLabel(matching.first()),style=MaterialTheme.typography.labelSmall)
                             if(matching.size!=all.size)LText("当前筛选 ${matching.size} 项",style=MaterialTheme.typography.bodySmall)
                         }
                         LIcon(Icons.Outlined.ChevronRight,null)

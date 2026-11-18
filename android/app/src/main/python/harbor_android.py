@@ -415,6 +415,9 @@ class MobileService:
             status=protocol.dispatch('confirm_pair',resources)
             fence=folder/(task+'.submitted')
             route='reconcile' if value.get('strategy')=='stepwise' else 'joint'
+            if value.get('automatic'):
+                from gpmc.live_plan import freeze_pair_route
+                route=freeze_pair_route(folder/(task+'.route.json'), resources['photo']['sha256'], resources['video']['sha256'], bool(status.get('photo_key')))
             if not status['confirmed'] and not fence.exists():
                 for role in ('photo','video'):
                     self.check(callback)
@@ -639,15 +642,18 @@ class MobileService:
                     return json.dumps({"ok": True})
                 if action == "connect": return json.dumps({"ok": True, **self.connect(values["credential"], values.get("timeout",60), values.get("proxy", ""))})
                 if action == "media_identity":
-                    from gpmc.media_identity import apple_id, has_still_image_time
-                    from gpmc.motion_photo import has_embedded_motion
+                    from gpmc.media_identity import has_still_image_time
+                    from gpmc.live_plan import inspect_resource
                     handle = bridge.open(values["uri"], values["name"])
                     try:
-                        result = apple_id(str(handle.getPath()), values.get("video", False))
+                        identity = inspect_resource(str(handle.getPath()), values.get("video", False))
                         keyframe = has_still_image_time(str(handle.getPath())) if values.get("video", False) else False
-                        embedded = has_embedded_motion(str(handle.getPath())) if not values.get("video", False) else False
+
                     finally: handle.close()
-                    return json.dumps({"ok": True, "identifier": result or "", "still_image_time": keyframe, "embedded_motion": embedded})
+                    return json.dumps({"ok": True, **identity, "still_image_time": keyframe})
+                if action == "plan_live":
+                    from gpmc.live_plan import plan_live
+                    return json.dumps({"ok": True, **plan_live(values)})
                 if self.client is None: return json.dumps({"ok": False, "error": "LOGIN_REQUIRED"})
                 if values.get("_account", self.account) != self.account:
                     return json.dumps({"ok": False, "error": "ACCOUNT_CHANGED"})

@@ -15,7 +15,11 @@ struct JobDetailView: View {
             if let job {
                 Section {
                     HStack(spacing: 16) { AssetThumbnail(assetID: job.assetID); JobRow(job: job, showDate: false) }
-                    Text(job.settings.quality.title + (job.isLive ? " · " + job.settings.live.title : "")).font(.caption).foregroundStyle(.secondary)
+                    Text(job.settings.quality.title + (job.isDynamic || job.settings.live == .automatic ? " · " + job.settings.live.title : "")).font(.caption).foregroundStyle(.secondary)
+                    if let plan = job.livePlan {
+                        Text(plan.title).font(.caption).foregroundStyle(.secondary)
+                        if !plan.warningText.isEmpty { Label(plan.warningText, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(.orange) }
+                    }
                     Text(job.verificationLevel == "strict" ? L10n.text("已确认动态处理完成") : job.verificationLevel == "standard" ? L10n.text("已确认云端保存") : job.state == .completed ? L10n.text("历史备份记录") : job.settings.requiresStrictConfirmation ? L10n.text("保存后继续等待动态处理") : L10n.text("云端保存确认后完成")).font(.caption).foregroundStyle(.secondary)
                 }
                 Section(L10n.text("备份流程")) { TaskFlowView(job: job) }

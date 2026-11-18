@@ -88,11 +88,13 @@ extension BackupJob {
         return 3
     }
     var displayStatus: String {
+        if state == .completed, let livePlan, !livePlan.warning.isEmpty { return L10n.text("已保存 · 动态部分未确认") }
         if skippedExisting { return L10n.text("已存在，跳过") }
         if [.paused, .waiting, .failed, .attention, .cancelled, .completed, .queued].contains(state) { return state.title }
         return flowSteps[flowIndex]
     }
     var friendlyMessage: String {
+        if let livePlan, !livePlan.warning.isEmpty { return livePlan.warningText }
         if skippedExisting { return L10n.text("所需内容已在云端找到并通过检查，已跳过上传。") }
         if state == .completed && reusedSome { return L10n.text("已完成备份，部分内容复用了已有云端资源。") }
         if error.isEmpty {

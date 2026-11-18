@@ -19,12 +19,8 @@ data class HarborSettings(
     val theme: String = "system", val palette: String = "system", val albumMode: String = "none",
     val albumValue: String = "", val mobile: String = "none", val account: String = "",val bootSession:Int=-1,
     val allFolders:Boolean=true,
-    /** Live Photo pairing: "original" (photo+video, joint submit) is the
-     * default; "motion" is the older single-file Motion Photo default. An
-     * upgrade never overwrites an existing choice (a missing key just reads
-     * as "original"); the per-account profile only restores a value saved
-     * for that account. */
-    val livePhotoPairing:String="original",
+    /** Automatic is the missing-key default. Existing account choices and queued jobs are retained. */
+    val livePhotoPairing:String="automatic",
     val editPolicy:String="current", val strictConfirmation:Boolean=false,
     val pipelineMode:String="automatic",val pipelineLimits:String="",val executionPolicy:String="",
     val archiveEnabled:Boolean=true, val archiveDays:Int=14, val language:String="system",
@@ -54,7 +50,7 @@ class Preferences(private val context: Context) {
         albumValue=p[stringPreferencesKey("albumValue")]?:"", mobile=if(p[booleanPreferencesKey("wifi")]!=false)"none" else "all",
         account=p[stringPreferencesKey("account")]?:"",bootSession=p[intPreferencesKey("bootSession")]?:-1,
         allFolders=p[booleanPreferencesKey("allFolders")]?:true,
-        livePhotoPairing=p[stringPreferencesKey("livePhotoPairing")]?:"original",
+        livePhotoPairing=p[stringPreferencesKey("livePhotoPairing")]?.takeIf{it in setOf("automatic","original","stepwise","motion")}?:"automatic",
         editPolicy="current",
         strictConfirmation=p[booleanPreferencesKey("strictConfirmation")]?:false,
         pipelineMode=p[stringPreferencesKey("pipelineMode")]?:"automatic",
@@ -82,7 +78,7 @@ class Preferences(private val context: Context) {
     suspend fun activateAccount(account:String) {
         context.harborPreferences.edit { p ->
             val booleans=mapOf("onboarded" to false,"auto" to false,"wifi" to true,"charging" to false,"videos" to true,"scheduled" to false,"restart" to true,"sameName" to false,"allFolders" to true,"strictConfirmation" to false)
-            val strings=mapOf("time" to "02:00","quality" to "original","albumMode" to "none","albumValue" to "","mobile" to "none","livePhotoPairing" to "original","editPolicy" to "both","pipelineMode" to "automatic","pipelineLimits" to "","executionPolicy" to "")
+            val strings=mapOf("time" to "02:00","quality" to "original","albumMode" to "none","albumValue" to "","mobile" to "none","livePhotoPairing" to "automatic","editPolicy" to "both","pipelineMode" to "automatic","pipelineLimits" to "","executionPolicy" to "")
             val integers=mapOf("concurrency" to 2,"timeout" to 60,"retries" to 3)
             val old=p[stringPreferencesKey("account")].orEmpty()
             if(old==account)return@edit
@@ -108,7 +104,7 @@ class Preferences(private val context: Context) {
             listOf("auto", "onboarded", "charging", "scheduled", "sameName", "strictConfirmation").forEach { p[booleanPreferencesKey(it)]=false }
             listOf("wifi", "videos", "restart", "allFolders").forEach { p[booleanPreferencesKey(it)]=true }
             p[stringPreferencesKey("quality")]="original"
-            p[stringPreferencesKey("livePhotoPairing")]="original"
+            p[stringPreferencesKey("livePhotoPairing")]="automatic"
             p[stringPreferencesKey("editPolicy")]="both"
             p[stringPreferencesKey("pipelineMode")]="automatic"
             p[stringPreferencesKey("pipelineLimits")]=""

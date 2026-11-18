@@ -81,7 +81,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData,sheetMode:Boolean=false) {
             LText(formatSize(media.size+(pair?.size?:0))+" · "+if(pair!=null||media.pairingID==LivePhotoPairing.EMBEDDED_MOTION)"Live Photo" else if(media.video)localize("视频") else localize("照片"),localize=false,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(pair!=null||media.pairingID==LivePhotoPairing.EMBEDDED_MOTION)TextButton(onClick={playingLive=!playingLive}){LText(if(playingLive)"显示静态照片" else "播放实况")}
             Button(onClick={vm.start(listOf(media.id))},enabled=!vm.busy&&data.settings.account.isNotEmpty(),modifier=Modifier.fillMaxWidth()){LIcon(Icons.Outlined.CloudUpload,null);LText("备份此项目")}
-            data.itemMap[media.id]?.let{item->SettingsRow(phaseLabel(item.state),icon=Icons.Outlined.History,onClick={vm.showItem(item)})}
+            data.itemMap[media.id]?.let{item->SettingsRow(itemPhaseLabel(item),icon=Icons.Outlined.History,onClick={vm.showItem(item)})}
 
         }
     }

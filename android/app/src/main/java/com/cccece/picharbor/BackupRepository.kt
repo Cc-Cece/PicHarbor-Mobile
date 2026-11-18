@@ -64,6 +64,7 @@ class BackupRepository(private val graph:AppGraph) {
     }
     private val identityCache=java.util.concurrent.ConcurrentHashMap<String,String>()
     private val keyframeHints=java.util.concurrent.ConcurrentHashMap<String,Boolean>()
+    private val motionHints=java.util.concurrent.ConcurrentHashMap<String,Boolean>()
     private val identityMutex=Mutex()
     private var identityRevision=-1L
     private var identitySnapshot:List<MediaEntry>?=null
@@ -72,7 +73,7 @@ class BackupRepository(private val graph:AppGraph) {
         identitySnapshot?.takeIf{identityRevision==revision}?.let{return@withLock it}
         val all=graph.dao.media()
         val currentKeys=all.map{"${it.id}:${it.modified}:${it.size}"}.toSet()
-        identityCache.keys.retainAll(currentKeys);keyframeHints.keys.retainAll(currentKeys)
+        identityCache.keys.retainAll(currentKeys);keyframeHints.keys.retainAll(currentKeys);motionHints.keys.retainAll(currentKeys)
         val identified=all.map { media ->
             val supported=media.mime in setOf("image/jpeg","image/heic","image/heif","video/quicktime","video/mp4") ||
                 media.name.substringAfterLast('.').lowercase() in setOf("jpg","jpeg","heic","heif","mov","mp4")
@@ -85,7 +86,7 @@ class BackupRepository(private val graph:AppGraph) {
                         throw error
                     }
                     val found=if(response.optBoolean("embedded_motion"))LivePhotoPairing.EMBEDDED_MOTION else response.optString("identifier")
-                    keyframeHints[key]=response.optBoolean("still_image_time")
+                    keyframeHints[key]=response.optBoolean("still_image_time");motionHints[key]=response.optBoolean("motion_hint")
                     identityCache[key]=found;found
                 }
                 media.copy(pairingID=identifier)
@@ -424,7 +425,7 @@ class BackupRepository(private val graph:AppGraph) {
         val runtime=java.io.File(graph.app.filesDir,"runtime")
         for(task in listOf(id,"$id-motion"))for(suffix in listOf(".receipt",".submitted",".digest.json",".part"))
             java.io.File(runtime,"ordinary-staging/$task$suffix").delete()
-        for(suffix in listOf(".photo.receipt",".video.receipt",".submitted",".photo-submitted",".motion.jpg",".motion.heic",".motion.part",".motion.sources.json"))
+        for(suffix in listOf(".photo.receipt",".video.receipt",".submitted",".photo-submitted",".route.json",".motion.jpg",".motion.heic",".motion.part",".motion.sources.json"))
             java.io.File(runtime,"pair-staging/$id$suffix").delete()
     }
     suspend fun end(jobId:String) {
@@ -567,7 +568,8 @@ class BackupRepository(private val graph:AppGraph) {
      * queued for a later run (and the user is told) instead of silently
      * running a second business implementation.
      */
-    private suspend fun process(job:BackupJob,item:BackupItem,settings:HarborSettings,cancelled:()->Boolean) {
+    private suspend fun process(job:BackupJob,initial:BackupItem,settings:HarborSettings,cancelled:()->Boolean) {
+        var item=initial
         val media=graph.dao.media(item.mediaId)
         if(media==null) {
             graph.dao.putItem(item.copy(state="failed",error="FILE_ACCESS",attempt=item.attempt+1))
@@ -579,23 +581,36 @@ class BackupRepository(private val graph:AppGraph) {
         // The run loop snapshots items up front; a Live Photo partner may
         // already have been finished by its pair's joint task. Re-read.
         if(graph.dao.item(item.id)?.state !in setOf("queued","album_pending","waiting_confirmation","hashing","checking","uploading","finalizing","finalizing_album"))return
-        val all=identifiedMedia()
-        val identified=all.firstOrNull{it.id==media.id}?:media
         val savedTask=graph.harborCore.task(item.id)
         if(item.remoteKey.isNotBlank()&&(item.state=="waiting_confirmation"||savedTask?.optBoolean("cloud_confirmed")==true&&savedTask.optString("state")!="done")) {
             finishStrictConfirmation(job,item,cancelled);return
+        }
+        val all=identifiedMedia()
+        var identified=all.firstOrNull{it.id==media.id}?:media
+        var plan:JSONObject?=null
+        if(job.liveStrategy=="automatic") {
+            if(item.livePlan.isBlank()) {
+                val observations=AutomaticLivePhoto.observations(identified,all){row->motionHints["${row.id}:${row.modified}:${row.size}"]==true}
+                val resolved=graph.engine.call("plan_live",observations)
+                graph.dao.freezeLivePlan(item.id,item.account,resolved.toString())
+            }
+            item=graph.dao.item(item.id)?:return
+            if(cancelled()||item.hidden||item.state=="cancelled")return
+            plan=runCatching{JSONObject(item.livePlan)}.getOrElse{throw EngineFailure("INVALID_LIVE_PLAN")}
+            AutomaticLivePhoto.validate(plan,all)
+            if(plan.optString("kind")!="apple_pair")identified=identified.copy(pairingID=if(plan.optString("kind")=="motion_photo")LivePhotoPairing.EMBEDDED_MOTION else "")
         }
         try {requireAvailableVersions()} catch(error:EngineFailure) {
             graph.dao.putItem(item.copy(state="failed",error=error.code,attempt=item.attempt+1));return
         }
         val embeddedMotion=identified.pairingID==LivePhotoPairing.EMBEDDED_MOTION
-        val group=LivePhotoPairing.groupFor(identified,all,job.liveStrategy,embeddedMotion)
-        if(identified.pairingID.isNotBlank()&&!embeddedMotion&&group?.video==null) {
+        val group=if(plan!=null)AutomaticLivePhoto.group(plan,all) else LivePhotoPairing.groupFor(identified,all,job.liveStrategy,embeddedMotion)
+        if(plan==null&&identified.pairingID.isNotBlank()&&!embeddedMotion&&group?.video==null) {
             graph.dao.putItem(item.copy(state="failed",error="LIVE_PAIR_RESOURCE_MISSING",attempt=item.attempt+1))
             return
         }
         if(group?.video!=null) {
-            processLivePhotoWithCore(job,item,media,group,settings,cancelled)
+            processLivePhotoWithCore(if(plan!=null)job.copy(liveStrategy=plan.getString("strategy")) else job,item,media,group,settings,cancelled)
             return
         }
         if(!processSingleWithCore(job,item,identified,settings,cancelled)) {
@@ -684,7 +699,7 @@ class BackupRepository(private val graph:AppGraph) {
             else {move("preparing");move("uploading");move("submitting");move("confirming")}
             fun resource(value:MediaEntry)=JSONObject().put("uri",value.id).put("name",value.name)
             val request=JSONObject().put("size",group.photo.size+video.size).put("_diagnostics",DiagnosticContext(job=job.id,item=item.id).json()).put("_account",job.account).put("task_id",item.id).put("photo",resource(group.photo)).put("video",resource(video))
-                .put("quality",job.quality).put("strategy",job.liveStrategy).put("created",group.photo.captured).put("modified",group.photo.modified)
+                .put("quality",job.quality).put("strategy",job.liveStrategy).put("automatic",item.livePlan.isNotBlank()).put("created",group.photo.captured).put("modified",group.photo.modified)
                 .put("album_mode",job.albumMode).put("album_value",job.albumValue).put("folder",group.photo.albumFolder).put("album_local_id",group.photo.folderKey)
             if(job.liveStrategy=="motion")keyframeUs(video)?.let{request.put("keyframe_us",it)}
             graph.dao.putItem(item.copy(state="uploading"))

@@ -51,7 +51,7 @@ final class BackupCoreTests: XCTestCase {
         old.appearance = "dark"
         let job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: old)
         let defaults = old.restoringDefaults()
-        XCTAssertEqual(defaults.live, .applePair); XCTAssertEqual(defaults.quality, .original); XCTAssertEqual(defaults.edits, .both)
+        XCTAssertEqual(defaults.live, .automatic); XCTAssertEqual(defaults.quality, .original); XCTAssertEqual(defaults.edits, .both)
         XCTAssertFalse(defaults.automatic); XCTAssertNil(defaults.scopeConfirmed); XCTAssertTrue(defaults.selectedAlbums.isEmpty)
         XCTAssertTrue(defaults.wifiOnly); XCTAssertFalse(defaults.syncAlbums)
         XCTAssertFalse(defaults.requiresStrictConfirmation)
@@ -72,7 +72,7 @@ final class BackupCoreTests: XCTestCase {
         json["cloudState"] = false
         json["originalAccess"] = false
         let decoded = try JSONDecoder().decode(BackupSettings.self, from: JSONSerialization.data(withJSONObject: json))
-        XCTAssertEqual(decoded.quality, .original); XCTAssertEqual(decoded.live, .applePair)
+        XCTAssertEqual(decoded.quality, .original); XCTAssertEqual(decoded.live, .automatic)
         var job = try pairedJob(); job.state = .completed
         var jobJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(job)) as! [String: Any]
         jobJSON["evidence"] = ["account": job.account, "revision": job.assetRevision, "policy": "11",
@@ -376,7 +376,7 @@ final class BackupCoreTests: XCTestCase {
         other = first; other.account = "b"
         XCTAssertNotEqual(first.discoveryKey(origin: .automatic), other.discoveryKey(origin: .automatic))
         XCTAssertEqual(try? JSONDecoder().decode(LiveStrategy.self, from: Data("\"applePair\"".utf8)), .applePair)
-        XCTAssertEqual(Set(LiveStrategy.allCases.map(\.rawValue)), ["motion", "applePair", "appleReconcile"])
+        XCTAssertEqual(Set(LiveStrategy.allCases.map(\.rawValue)), ["automatic", "motion", "applePair", "appleReconcile"])
     }
     func testNetworkPolicyRebuildsTransportWithoutChangingMediaOrCommitEvidence() {
         var job = BackupJob(account: "a", assetID: "asset", assetRevision: "1", settings: BackupSettings())
@@ -490,7 +490,7 @@ final class BackupCoreTests: XCTestCase {
     func testDefaultSettingsAndVersionedMediaIdentity() {
         var settings = BackupSettings()
         XCTAssertEqual(settings.quality, .original)
-        XCTAssertEqual(settings.live, .applePair)
+        XCTAssertEqual(settings.live, .automatic)
         XCTAssertEqual(settings.edits, .both)
         XCTAssertFalse(settings.automatic)
         let media = settings.mediaPolicy

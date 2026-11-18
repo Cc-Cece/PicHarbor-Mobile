@@ -169,8 +169,8 @@ enum ResourceExporter {
             if live {
                 // Never mix edited stills with an original paired video.
                 let desired: PHAssetResourceType = current && image.type == .fullSizePhoto ? .fullSizePairedVideo : .pairedVideo
-                guard let clip = resources.first(where: { $0.type == desired }) else { throw HarborError("LIVE_PAIR_MISSING") }
-                pair.append((clip, "\(version).pairedVideo"))
+                if let clip = resources.first(where: { $0.type == desired }) { pair.append((clip, "\(version).pairedVideo")) }
+                else if settings.live != .automatic { throw HarborError("LIVE_PAIR_MISSING") }
             }
             for (resource, role) in pair {
                 try Task.checkCancellation()

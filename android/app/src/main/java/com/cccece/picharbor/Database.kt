@@ -35,7 +35,7 @@ data class BackupItem(
     val name: String, val bytes: Long, val state: String = "queued", val remoteKey: String = "",
     val sha1: String = "", val sha256: String = "", val modified: Long = 0,
     val origin: String = "", val error: String = "", val attempt: Int = 0, val hidden: Boolean = false,
-    val archivedAt: Long = 0, val unarchivedAt: Long = 0, val confirmationElapsedMs:Long=0, val completedAt:Long=0
+    val archivedAt: Long = 0, val unarchivedAt: Long = 0, val confirmationElapsedMs:Long=0, val completedAt:Long=0, val livePlan:String=""
 )
 
 data class JobStatistics(val jobId:String,val total:Int,val succeeded:Int,val failed:Int,val skipped:Int,val bytes:Long,val finished:Int=0)
@@ -102,6 +102,8 @@ interface HarborDao {
     @Query("SELECT * FROM items WHERE account=:account ORDER BY rowid DESC LIMIT 10000") fun itemsFlow(account: String): Flow<List<BackupItem>>
     @Query("SELECT * FROM items WHERE jobId=:job ORDER BY rowid") suspend fun items(job: String): List<BackupItem>
     @Query("SELECT * FROM items WHERE id=:id") suspend fun item(id: String): BackupItem?
+    @Query("UPDATE items SET livePlan=:plan WHERE id=:id AND account=:account AND livePlan=''")
+    suspend fun freezeLivePlan(id:String,account:String,plan:String):Int
     @Query("SELECT COUNT(*) FROM items i JOIN jobs j ON i.jobId=j.id WHERE i.account=:account AND i.mediaId=:mediaId AND j.state IN ('queued','running','waiting','paused','pausing') AND i.state NOT IN ('failed','cancelled','filename_skipped')") suspend fun activeCount(account: String, mediaId: String): Int
     @Query("SELECT i.* FROM items i JOIN jobs j ON i.jobId=j.id WHERE i.account=:account AND i.mediaId=:mediaId AND j.state IN ('queued','running','waiting','paused','pausing','auth_required') AND i.state IN ('queued','hashing','checking','uploading','finalizing','finalizing_album','album_pending','paused','waiting_confirmation','waiting_network','interrupted') LIMIT 1") suspend fun activeItem(account:String,mediaId:String):BackupItem?
     @Query("SELECT * FROM items WHERE id IN (:ids)") fun observeItems(ids:List<String>):Flow<List<BackupItem>>
@@ -118,10 +120,15 @@ interface HarborDao {
     suspend fun archiveEligible(account:String,cutoff:Long,now:Long)
 }
 
-@Database(entities = [MediaEntry::class, BackupRecord::class, BackupJob::class, BackupItem::class, CoreTaskSnapshot::class, SuppressedAsset::class], version = 9, exportSchema = true)
+@Database(entities = [MediaEntry::class, BackupRecord::class, BackupJob::class, BackupItem::class, CoreTaskSnapshot::class, SuppressedAsset::class], version = 10, exportSchema = true)
 abstract class HarborDatabase : RoomDatabase() {
     abstract fun dao(): HarborDao
     companion object {
+        val MIGRATION_9_10=object:androidx.room.migration.Migration(9,10) {
+            override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE items ADD COLUMN livePlan TEXT NOT NULL DEFAULT ''")
+            }
+        }
         val MIGRATION_8_9=object:androidx.room.migration.Migration(8,9) {
             override fun migrate(db:androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE items ADD COLUMN completedAt INTEGER NOT NULL DEFAULT 0")
@@ -192,7 +199,7 @@ abstract class HarborDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE IF EXISTS cleanups")
             }
         }
-        fun open(context: Context) = Room.databaseBuilder(context, HarborDatabase::class.java, "picharbor.db").addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9).build()
+        fun open(context: Context) = Room.databaseBuilder(context, HarborDatabase::class.java, "picharbor.db").addMigrations(MIGRATION_1_2,MIGRATION_2_3,MIGRATION_3_4,MIGRATION_4_5,MIGRATION_5_6,MIGRATION_6_7,MIGRATION_7_8,MIGRATION_8_9,MIGRATION_9_10).build()
     }
 }
 

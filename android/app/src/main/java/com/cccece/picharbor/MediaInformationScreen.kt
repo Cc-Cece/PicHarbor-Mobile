@@ -23,7 +23,7 @@ fun MediaInformationContent(vm:HarborViewModel,data:HarborUiData) {
             if(pair!=null){ProductValue("动态视频",pair.name,false);ProductValue("视频大小",formatSize(pair.size))}
         }
         ProductSection("备份") {
-            ProductValue("当前状态",phaseLabel(data.itemMap[media.id]?.state?:if(data.backed(media))"done" else "queued"))
+            ProductValue("当前状态",data.itemMap[media.id]?.let{itemPhaseLabel(it)}?:phaseLabel(if(data.backed(media))"done" else "queued"))
             data.backupMap[media.id]?.let{ProductValue("备份时的画质设置",qualityName(it.quality))}
         }
 }

@@ -8,10 +8,11 @@ enum UploadQuality: String, Codable, CaseIterable, Identifiable {
     }
 }
 enum LiveStrategy: String, Codable, CaseIterable, Identifiable {
-    case motion, applePair, appleReconcile
+    case automatic, motion, applePair, appleReconcile
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .automatic: return L10n.text("自动（推荐）")
         case .motion: return L10n.text("动态照片封装")
         case .applePair: return L10n.text("原始照片配对")
         case .appleReconcile: return L10n.text("原始照片配对（分步上传）")
@@ -25,7 +26,7 @@ enum EditPolicy: String, Codable, CaseIterable, Identifiable {
 }
 struct BackupSettings: Codable, Equatable {
     var quality: UploadQuality = .original
-    var live: LiveStrategy = .applePair
+    var live: LiveStrategy = .automatic
     var edits: EditPolicy = .both
     var automatic = false
     var scopeConfirmed: Bool?
@@ -157,6 +158,8 @@ struct BackupJob: Codable, Identifiable {
     var assetCreated: Date?
     var assetModified: Date?
     var livePairs: [LivePairRecord]?
+    var livePlan: AutomaticLivePlan?
+    var isDynamic: Bool { isLive || livePlan?.kind == "motion_photo" }
     var state: JobState = .queued
     var resources: [MediaResource] = []
     // Exported source manifests are retained even when Motion Photo replaces upload resources.
@@ -221,8 +224,8 @@ struct BackupJob: Codable, Identifiable {
         }
     }
     var confirmationOnly: Bool {
-        isLive && !resources.isEmpty && resources.allSatisfy(\.confirmed) &&
-        (settings.live == .motion || hasConfirmedPairs)
+        isDynamic && !resources.isEmpty && resources.allSatisfy(\.confirmed) &&
+        (settings.live == .motion || livePlan?.kind == "motion_photo" || hasConfirmedPairs)
     }
     func canSchedule(alongside running: [BackupJob]) -> Bool {
         running.filter { $0.confirmationOnly == confirmationOnly }.count < (confirmationOnly ? 1 : 2)

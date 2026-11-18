@@ -157,6 +157,10 @@
       "sha256": "df24d5fe414542222532dccc9ca7279ef2dd31ab8d3b287e4e5f01e70569b99b"
     },
     {
+      "path": "gpmc/live_plan.py",
+      "sha256": "aea766a5692219cb06a60101bded7eef9b3af6a85408e4928e2f7f202980c874"
+    },
+    {
       "path": "gpmc/media_access.py",
       "sha256": "88dad509d517dc2b5265eb51ea08c0c63fbfdad0623afc4557207097faff11f9"
     },
@@ -190,7 +194,7 @@
     },
     {
       "path": "gpmc/protocol.py",
-      "sha256": "ff5445d471782db64d8f178ec42c217fa19a4d0c4e3c9e1daeec9d731551d0e0"
+      "sha256": "d7f74695aff0fa6330d63bd67b10942c4048673ecdb3cb4c262458aab5ce07d4"
     },
     {
       "path": "gpmc/proxy_selection.py",

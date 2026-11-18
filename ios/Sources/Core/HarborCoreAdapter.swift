@@ -204,6 +204,7 @@ final class HarborCoreAdapter {
     /// is `nonisolated`: callers outside the main actor (e.g. the
     /// sync `legacyRecord(for:)`) can use it without hopping.
     nonisolated static func mediaKind(for job: BackupJob) -> String {
+        if job.livePlan?.kind == "motion_photo" { return "motion_photo" }
         if job.isLive {
             return job.settings.live == .motion ? "motion_photo" : "live_photo"
         }

@@ -52,6 +52,7 @@
 "不会重新上传照片，也不影响已完成的任务。需要释放本机空间时，请前往 Google 相册。" = "This does not upload photos again or affect completed jobs. To free up device space, use Google Photos.";
 "不创建系统 VPN。其他应用不使用此代理。验证阶段请保持应用在前台。" = "No system VPN is created. Other apps do not use this proxy. Keep PicHarbor in the foreground during testing.";
 "不可用" = "Unavailable";
+"不同版本包含不同的动态信息，已分别保留原文件。" = "Versions contain different motion information. Their original files are preserved separately.";
 "不支持此备份范围，请更新 PicHarbor。" = "This backup scope is unsupported. Update PicHarbor.";
 "不计配额原画质" = "Original quality · no quota";
 "不限日期" = "All dates";
@@ -85,6 +86,7 @@
 "仅代理 PicHarbor" = "Proxy PicHarbor only";
 "仅原始版本" = "Original only";
 "仅在同一局域网内直接传输，不经过互联网。" = "Sends directly on the same local network. Nothing goes over the internet.";
+"仅在需要兼容特定照片时手动调整。分步上传只改变提交顺序，不改变照片与视频的配对。切换只影响新任务。" = "Adjust manually only for compatibility. Stepwise upload changes the submission order, not the photo and video pairing. Changes apply to new tasks only.";
 "仅处理当前筛选结果。本机及云端照片保留；自动备份不会重新加入已移除项目的同一版本，仍可手动重新备份。" = "Only the filtered results are affected. Local and cloud photos are kept. Removed versions will not be added automatically, but can be backed up manually.";
 "仅导入节点，不使用文件中的规则、系统 VPN 或 DNS 设置。最多保存 20 份配置，每份最多 64 个节点。" = "Only nodes are imported. Rules, system VPN and DNS settings are not used. Save up to 20 configurations with 64 nodes each.";
 "仅显示已授权内容" = "Showing allowed photos only";
@@ -184,6 +186,7 @@
 "分享" = "Share";
 "分享 Live Photo" = "Share Live Photo";
 "分享测试结果" = "Share test results";
+"分步上传（兼容模式）" = "Stepwise upload (compatibility mode)";
 "分辨率" = "Resolution";
 "切换方式只影响新任务，已有照片不会自动重新上传。" = "Changes apply to new tasks. Existing photos will not be uploaded again automatically.";
 "创建后台传输" = "Create background upload";
@@ -196,6 +199,9 @@
 "剩余大小" = "Remaining size";
 "动态照片封装" = "Motion Photo package";
 "动态照片封装未完成，原件已保留。" = "Motion Photo packaging did not finish. Your original is kept.";
+"动态照片封装（兼容模式）" = "Motion Photo packaging (compatibility mode)";
+"动态照片结构无法确认，已保留原文件，未确认动态部分。" = "The Motion Photo structure could not be verified. The original is preserved, but its motion is not verified.";
+"动态部分未确认" = "Motion not verified";
 "勾选最多 8 个备用节点。只在允许切换的策略下使用，按勾选顺序尝试。" = "Select up to 8 backup nodes. They are tried in selection order only when the policy permits switching.";
 "包含运行环境、任务状态与错误码；不包含凭据、签名地址、照片、文件名或账号。" = "Includes runtime details, task states, and error codes. Excludes credentials, signed URLs, photos, filenames, and accounts.";
 "单向同步相簿" = "One-way album sync";
@@ -252,6 +258,7 @@
 "在 Google 页面完成登录；凭据仅保存于本机钥匙串。" = "Sign in on Google’s page. Credentials stay in this iPhone’s Keychain.";
 "在主屏幕或 App 资源库中，长按 Google 相册图标，再点“释放空间”。" = "On the Home Screen or in the App Library, touch and hold the Google Photos icon, then tap Free up space.";
 "地址" = "Address";
+"处理方式" = "Processing method";
 "处理步骤" = "Processing step";
 "备份" = "Backup";
 "备份偏好" = "Backup preferences";
@@ -321,8 +328,10 @@
 "尚未记录" = "Not recorded";
 "尚未请求" = "Not requested";
 "尝试备用节点" = "Try backup nodes";
+"已保存 · 动态部分未确认" = "Saved · motion not verified";
 "已保存的电脑" = "Saved computer";
 "已保存的配置" = "Saved Configurations";
+"已保留可读取的原文件，但照片或动态视频不完整，未确认完整的实况效果。" = "Readable originals are preserved, but the photo or motion video is incomplete. The full Live Photo effect is not verified.";
 "已允许清理尚未完整验证的 Live Photo，照片和视频仍需通过保存检查。" = "Cleanup of incompletely verified Live Photos is allowed. Both photo and video must still pass saving checks.";
 "已关闭" = "Off";
 "已加入备份队列 · {0} 项" = "Added to backup queue · {0}";
@@ -445,6 +454,7 @@
 "文件已传输，云端尚未确认为动态照片。稍后重试会重新检查，不重复上传。" = "Files uploaded. The cloud has not confirmed the motion photo yet. Retry checks again without uploading again.";
 "无法保存或读取上传响应文件。请检查本机空间，再重新准备此任务。" = "Could not read or save the upload response. Check free space and prepare this task again.";
 "无法取得同一版本的完整 Live Photo 资源。" = "The complete photo and video for this Live Photo version are unavailable.";
+"无法唯一确认照片与视频的配对关系，已分别保留原文件。" = "The photo and video cannot be paired unambiguously. Original files are preserved separately.";
 "无法恢复此任务的照片版本。请从照片页面重新备份；已有云端内容保留。" = "This task's photo version cannot be recovered. Back it up again from Photos. Existing cloud content is kept.";
 "无法查看照片" = "Photo unavailable";
 "无法访问安全凭据存储。" = "Secure credential storage is unavailable.";
@@ -452,6 +462,7 @@
 "无法读取 Live Photo 关键帧，已保留原件。" = "The Live Photo key frame could not be read. Your original is kept.";
 "无法读取原件或写入暂存文件，请检查空间与照片权限。" = "Could not read the original or save a temporary file. Check storage and Photos access.";
 "无法读取图片，请选择另一张二维码图片。" = "Could not read the image. Choose another QR code image.";
+"无法读取已保存的识别结果，请重新创建备份任务。" = "The saved format decision could not be read. Please create a new backup task.";
 "无法读取这项照片，请检查相册访问权限。" = "This photo could not be read. Check Photos access.";
 "无进展超时（秒）" = "No-progress timeout (seconds)";
 "日志保留" = "Log retention";
@@ -555,6 +566,7 @@
 "正在提交云端记录" = "Saving cloud record";
 "正在查询云端内容" = "Checking cloud content";
 "正在校验资源导出" = "Checking photo export";
+"正在核对已提交的配对结果，请稍后重试。" = "Checking the submitted pair. Please try again later.";
 "正在核对所选项目并请求系统删除" = "Checking selection and requesting deletion";
 "正在核对相册创建结果，请稍后重试归类，不会重复创建" = "Checking the album creation result. Retry album organization later; another album will not be created.";
 "正在核验或清理照片，完成后可连接账号。" = "Photos are being checked or removed. Connect an account when finished.";
@@ -708,11 +720,16 @@
 "网络设置立即生效，手动暂停的任务保持暂停。正在上传的文件可能需要重传。关闭自动备份不会取消已有任务。" = "Connection settings apply immediately. Manually paused tasks stay paused. An active upload may restart. Turning off automatic backup does not cancel existing tasks.";
 "网络请求失败，请检查网络后重试。" = "Network request failed. Check your connection and retry.";
 "自动" = "Automatic";
+"自动 · 动态照片原文件上传" = "Automatic · original Motion Photo";
+"自动 · 原文件上传" = "Automatic · original files";
+"自动 · 照片与视频配对" = "Automatic · photo and video pair";
 "自动备份" = "Automatic backup";
 "自动备份会识别范围内新增和修改内容。系统后台安排不保证即时，打开应用可继续。" = "New and changed photos in your scope are detected automatically. Background work may be delayed; open the app to continue.";
 "自动归档" = "Automatic archiving";
+"自动识别中" = "Detecting format";
 "自动选择" = "Automatic";
 "自动重试次数" = "Automatic retries";
+"自动（推荐）" = "Automatic (recommended)";
 "自定义" = "Custom";
 "自定义任务保护" = "Customize task protection";
 "至少 {0}" = "At least {0}";
@@ -745,6 +762,7 @@
 "设置入口候选" = "Settings candidate";
 "设置尚未就绪，请等待初始化完成后重试。" = "Settings are not ready. Wait for startup and retry.";
 "证书前 16 位" = "First 16 of the certificate";
+"识别结果" = "Detected format";
 "诊断" = "Diagnostics";
 "详情" = "Details";
 "语言" = "Language";
@@ -828,6 +846,7 @@
 "选择此项目" = "Select this item";
 "选择记录取消归档" = "Select records to unarchive";
 "选择记录归档" = "Select records to archive";
+"逐项识别并保留原有形式；不会自动转换格式。切换只影响新任务。" = "Detects each item and preserves its existing format without automatic conversion. Changes apply to new tasks only.";
 "通过 Google 相册释放本机空间。后台备份由系统安排，打开 PicHarbor 可继续推进。" = "Free up device space with Google Photos. Background backup is scheduled by iOS; open PicHarbor to continue.";
 "通过 Google 相册释放空间" = "Free up space with Google Photos";
 "通过已有配对查询" = "Found existing pairing";
@@ -885,6 +904,7 @@
 "验证版支持最多 64 个节点的 Clash YAML，暂不支持代理提供者或链式代理。" = "This preview supports Clash YAML with up to 64 nodes. Proxy providers and chained proxies are not supported yet.";
 "高级信息" = "Advanced information";
 "高级备份检查" = "Advanced backup checks";
+"高级实况设置" = "Advanced Live Photo settings";
 "高级配置" = "Advanced configuration";
 "高级：导入已有 gpmc 凭据" = "Advanced: import gpmc credentials";
 "默认关闭。开启后，照片和动态视频均已保存即可继续清理检查；取回后可能需要重新配对，部分动态效果可能无法恢复。其他已开启的检查仍会执行。" = "Off by default. Once the photo and video are saved, cleanup checking can continue. Pairing may need repair after retrieval, and some motion effects may not restore. Other enabled checks still apply.";

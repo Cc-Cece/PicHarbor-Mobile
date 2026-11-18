@@ -77,6 +77,7 @@ data class HarborUiData(val settings:HarborSettings,val media:List<MediaEntry>,v
         if(settings.account.isEmpty())return "unknown"
         val task=itemMap[m.id]?.takeIf{it.account==settings.account}
         if(task?.id==transfer.item||task?.state in setOf("hashing","checking","uploading","finalizing","finalizing_album"))return "uploading"
+        if(task?.state in setOf("done","exists")&&task!=null&&liveWarning(task.livePlan).isNotBlank())return "warning"
         if(backed(m))return "uploaded"
         if(task?.state=="failed"||task?.state=="album_pending")return "error"
         if(task?.state=="queued")return "pending"

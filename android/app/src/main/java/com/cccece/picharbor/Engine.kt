@@ -97,6 +97,13 @@ class Engine(private val context:Context) {
 
 object Messages {
     fun error(code:String)=when(code) {
+        "LIVE_PAIR_INCOMPLETE"->"已保留可读取的原文件，但照片或动态视频不完整，未确认完整的实况效果。"
+        "LIVE_PAIR_AMBIGUOUS"->"无法唯一确认照片与视频的配对关系，已分别保留原文件。"
+        "MOTION_STRUCTURE_UNKNOWN"->"动态照片结构无法确认，已保留原文件，未确认动态部分。"
+        "LIVE_MIXED_REPRESENTATIONS"->"不同版本包含不同的动态信息，已分别保留原文件。"
+        "INVALID_LIVE_PLAN"->"无法读取已保存的识别结果，请重新创建备份任务。"
+        "LIVE_PLAN_PENDING"->"正在核对已提交的配对结果，请稍后重试。"
+
         "ALBUM_NAME_AMBIGUOUS"->"云端存在多个同名相册，请先在 Google 相册整理后重试归类"
         "ALBUM_CREATION_PENDING"->"正在核对相册创建结果，请稍后重试归类，不会重复创建"
         "LOGIN_REQUIRED"->"账号需要重新登录"

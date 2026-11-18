@@ -7,12 +7,13 @@ import android.net.Uri
  * Live Photo / multi-resource pairing on Android.
  *
  * One media item, one core task (`media_kind=live_photo`):
- * - Default pairing is the original photo paired with its video
+ * - Automatic preserves embedded files and pairs complete original resources.
+ *   Explicit original pairing uses the original photo paired with its video
  *   ("original", joint submission), per the 2026-10-19 / C2 decision.
  *   The older Motion Photo single-file default ("motion") stays available
  *   as an explicit choice. An existing setting is never overwritten by an
  *   upgrade: [HarborSettings.livePhotoPairing] is only ever written when
- *   the user changes it; a missing key simply reads as "original".
+ *   the user changes it; a missing key now reads as "automatic".
  * - Photo/video pairs require the same explicit Apple content identifier.
  *   Filename, folder and capture time do not establish a pairing.
  * - Embedded JPEG motion is indexed by the shared parser, which validates
@@ -58,15 +59,21 @@ object LivePhotoPairing {
         indexes.add(java.lang.ref.WeakReference(all) to value)
         return value
     }
-    /** Only explicit identifiers establish a pair; time breaks ties between copies. */
-    fun findPair(photo: MediaEntry, all: List<MediaEntry>): MediaEntry? =
-        (if(photo.pairingID.isEmpty()||photo.pairingID==EMBEDDED_MOTION)emptyList() else index(all)[photo.pairingID].orEmpty()).filter { it.video && it.id != photo.id }
-            .minByOrNull { kotlin.math.abs(it.captured - photo.captured) }
-
-    /** Finds the photo partner of a video (the symmetric lookup). */
-    fun findPhotoPartner(video: MediaEntry, all: List<MediaEntry>): MediaEntry? =
-        (if(video.pairingID.isEmpty())emptyList() else index(all)[video.pairingID].orEmpty()).filter { !it.video && it.id != video.id }
-            .minByOrNull { kotlin.math.abs(it.captured - video.captured) }
+    /** An explicit identifier is necessary; duplicated versions must be unambiguous both ways. */
+    private fun uniquePartner(media:MediaEntry,all:List<MediaEntry>):MediaEntry? {
+        if(media.pairingID.isEmpty()||media.pairingID==EMBEDDED_MOTION)return null
+        val candidates=index(all)[media.pairingID].orEmpty().filter{it.video!=media.video&&it.id!=media.id}
+        val local=candidates.filter{it.folderKey==media.folderKey}
+        return if(local.size==1)local.single() else if(local.isEmpty()&&candidates.size==1)candidates.single() else null
+    }
+    fun findPair(photo:MediaEntry,all:List<MediaEntry>):MediaEntry? {
+        val video=uniquePartner(photo,all)?:return null
+        return video.takeIf{it.video&&uniquePartner(it,if(all.any{row->row.id==photo.id})all else all+photo)?.id==photo.id}
+    }
+    fun findPhotoPartner(video:MediaEntry,all:List<MediaEntry>):MediaEntry? {
+        val photo=uniquePartner(video,all)?:return null
+        return photo.takeIf{!it.video&&uniquePartner(it,if(all.any{row->row.id==video.id})all else all+video)?.id==video.id}
+    }
 
     fun logical(all:List<MediaEntry>)=all.filter{!it.video||findPhotoPartner(it,all)==null}
     fun folders(media:MediaEntry,all:List<MediaEntry>):Set<String> = setOfNotNull(media.folderKey,
@@ -93,7 +100,7 @@ object LivePhotoPairing {
             if (pairing == MOTION && embeddedMotion) return LivePhotoGroup(media, null, true, pairing)
             // "original" pairing without a video partner is an ordinary photo;
             // an unverified Live Photo is never treated as paired.
-            if (pairing == ORIGINAL && embeddedMotion) return LivePhotoGroup(media, null, true, pairing)
+            if (pairing in setOf(ORIGINAL,"automatic","stepwise") && embeddedMotion) return LivePhotoGroup(media, null, true, pairing)
             return null
         }
         val partner = findPhotoPartner(media, all) ?: return null

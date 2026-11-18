@@ -217,12 +217,12 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
                     AsyncImage(remember(imageKey,context){coil.request.ImageRequest.Builder(context).data(Uri.parse(m.id)).memoryCacheKey(imageKey).diskCacheKey(imageKey).build()},m.name,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,onError={failed=true},onSuccess={failed=false})
                     if(failed)Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),contentAlignment=Alignment.Center){LIcon(Icons.Outlined.BrokenImage,"无法加载预览",tint=MaterialTheme.colorScheme.onSurfaceVariant)}
                     val status=data.status(m)
-                    if(status in setOf("uploaded","uploading","error"))Surface(
+                    if(status in setOf("uploaded","uploading","error","warning"))Surface(
                         modifier=Modifier.align(Alignment.BottomEnd).padding(5.dp).size(28.dp),shape=CircleShape,shadowElevation=1.dp,
-                        color=when(status){"uploaded"->Color(0xFF1B7F46);"uploading"->MaterialTheme.colorScheme.primary;else->MaterialTheme.colorScheme.error},
-                        contentColor=when(status){"uploaded"->Color.White;"uploading"->MaterialTheme.colorScheme.onPrimary;else->MaterialTheme.colorScheme.onError}
-                    ) {LIcon(when(status){"uploaded"->Icons.Outlined.CloudDone;"uploading"->Icons.Outlined.Sync;else->Icons.Outlined.ErrorOutline},
-                        when(status){"uploaded"->"已备份";"uploading"->"备份中";else->"需要处理"},Modifier.padding(5.dp))}
+                        color=when(status){"warning"->Color(0xFF795500);"uploaded"->Color(0xFF1B7F46);"uploading"->MaterialTheme.colorScheme.primary;else->MaterialTheme.colorScheme.error},
+                        contentColor=when(status){"warning"->Color.White;"uploaded"->Color.White;"uploading"->MaterialTheme.colorScheme.onPrimary;else->MaterialTheme.colorScheme.onError}
+                    ) {LIcon(when(status){"warning"->Icons.Outlined.WarningAmber;"uploaded"->Icons.Outlined.CloudDone;"uploading"->Icons.Outlined.Sync;else->Icons.Outlined.ErrorOutline},
+                        when(status){"warning"->"动态部分未确认";"uploaded"->"已备份";"uploading"->"备份中";else->"需要处理"},Modifier.padding(5.dp))}
                     if(m.video)LIcon(Icons.Outlined.PlayArrow,"视频",Modifier.align(Alignment.BottomStart).padding(5.dp),tint=Color.White)
                     if(vm.selectionMode)Checkbox(m.id in vm.selected,onCheckedChange=null,modifier=Modifier.align(Alignment.TopEnd))
                 }}
@@ -291,7 +291,10 @@ fun SettingsScreen(vm:HarborViewModel,data:HarborUiData) {
     ProductPage("备份偏好",vm) {
         ProductSection {ProductPicker("并发模式",s.pipelineMode,listOf("automatic" to "自动","custom" to "自定义"),!vm.busy,description="自动模式根据设备资源调整，自定义参数可在高级配置中设置。"){vm.setString("pipelineMode",it)};if(s.pipelineMode=="custom")SettingsRow("高级配置",onClick={vm.navigate("pipeline")})}
         ProductSection("上传画质") {ProductPicker("上传画质",s.quality,listOf("original" to "原始画质（不占用配额）","saver" to "节省空间（不占用配额）","quota" to "原始画质（占用配额）"),!vm.busy,description="元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。",optionDescriptions=mapOf("original" to "保留原始清晰度，使用当前免配额上传方式","quota" to "使用 Google 账号存储空间","saver" to "可能压缩照片和视频")){vm.setString("quality",it)}}
-        ProductSection("Live Photo 备份方式") {ProductPicker("备份方式",s.livePhotoPairing,listOf("original" to "原始照片配对","stepwise" to "原始照片配对（分步上传）","motion" to "动态照片封装"),!vm.busy,description="切换方式只影响新任务，已有照片不会自动重新上传。",optionDescriptions=mapOf("original" to "照片与视频配对，按一个媒体项目备份并一次确认","stepwise" to "先保存照片，再关联动态视频","motion" to "单个文件内嵌动态视频，按单文件备份")){vm.setString("livePhotoPairing",it)}}
+        ProductSection("Live Photo 备份方式") {
+            ProductPicker("备份方式",if(s.livePhotoPairing=="automatic")"automatic" else "manual",listOf("automatic" to "自动（推荐）","manual" to "手动"),!vm.busy,description="逐项识别并保留原有形式；不会自动转换格式。切换只影响新任务。"){value->vm.setString("livePhotoPairing",if(value=="automatic")"automatic" else s.livePhotoPairing.takeUnless{it=="automatic"}?:"original")}
+            if(s.livePhotoPairing!="automatic")SettingsRow("高级实况设置",livePhotoLabel(s.livePhotoPairing),onClick={vm.sheet="live-photo"})
+        }
         ProductSection(footer="备份时，按手机里的文件夹名称整理到 Google 相册。例如，“相机”里的照片会放进云端的“相机”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改文件夹名称，不会改变云端内容。只对开启后的新备份任务生效。") {ToggleRow("保留相册分类","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
         ProductSection {SettingsRow("高级备份检查",onClick={vm.navigate("checks")})}
     }

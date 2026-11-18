@@ -145,10 +145,10 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                     Helper("元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。")
                 }
                 mode=="live-photo"->{
-                    Choice("原始照片配对（分步上传）",data.settings.livePhotoPairing=="stepwise","先保存照片，再关联动态视频"){vm.setString("livePhotoPairing","stepwise")}
-                    Choice("原始照片配对（联合提交）",data.settings.livePhotoPairing=="original","照片与视频配对，按一个媒体项目备份并一次确认"){vm.setString("livePhotoPairing","original")}
-                    Choice("Motion Photo（单文件）",data.settings.livePhotoPairing=="motion","单个文件内嵌动态视频，按单文件备份"){vm.setString("livePhotoPairing","motion")}
-                    Helper("已有设置不会被升级覆盖；未确认的实况照片只备份、不清理本机原件。")
+                    Choice("原始照片配对",data.settings.livePhotoPairing!="motion"){dismiss{vm.setString("livePhotoPairing","original")}}
+                    Choice("动态照片封装（兼容模式）",data.settings.livePhotoPairing=="motion"){dismiss{vm.setString("livePhotoPairing","motion")}}
+                    if(data.settings.livePhotoPairing!="motion")Row(verticalAlignment=Alignment.CenterVertically){LText("分步上传（兼容模式）",modifier=Modifier.weight(1f));Switch(data.settings.livePhotoPairing=="stepwise",{value->vm.setString("livePhotoPairing",if(value)"stepwise" else "original")},enabled=!vm.busy)}
+                    Helper("仅在需要兼容特定照片时手动调整。分步上传只改变提交顺序，不改变照片与视频的配对。切换只影响新任务。")
                 }
                 mode=="proxy"->{
                     Row(verticalAlignment=Alignment.CenterVertically){LText("启用代理",modifier=Modifier.weight(1f));Switch(proxyEnabled,{proxyEnabled=it},enabled=!vm.busy)}

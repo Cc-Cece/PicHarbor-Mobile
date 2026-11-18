@@ -952,7 +952,7 @@ final class HarborModel: ObservableObject {
                                       created: asset.creationDate, modified: asset.modificationDate)
                 job.error = ""; job.failureStage = nil; try await persist(job)
                 try checkpoint(job)
-                if job.isLive && job.settings.live != .motion && !applePairAvailable { throw HarborError("PAIR_PROTOCOL_UNVERIFIED") }
+                if job.isLive && job.settings.live != .motion && job.settings.live != .automatic && !applePairAvailable { throw HarborError("PAIR_PROTOCOL_UNVERIFIED") }
                 let exportSignature = PhotoLibrary.preparationStamp(asset)
                 // Only an unreferenced preparation directory is discarded, never a transfer file.
                 try? FileManager.default.removeItem(at: directory)
@@ -972,6 +972,12 @@ final class HarborModel: ObservableObject {
                     throw HarborError("SOURCE_SETTLING")
                 }
                 job.sourceWaits = 0
+                if job.settings.live == .automatic {
+                    job.livePlan = try await automaticLivePlan(for: job)
+                    // Keep complete system/metadata pairs; preserve partial resources
+                    // individually with a warning, never call them a confirmed Live Photo.
+                    job.isLive = job.livePlan?.kind == "apple_pair"
+                }
                 if job.isLive {
                     if job.settings.live == .motion {
                         stage = "motion_package"
@@ -1131,14 +1137,14 @@ final class HarborModel: ObservableObject {
                 job.error = ""; job.retryAt = nil; job.failureStage = "confirmation"; try await persist(job)
                 return // All Live strategies release the upload lane before library queries.
             }
-            if job.isLive && job.settings.requiresStrictConfirmation {
+            if job.isDynamic && job.settings.requiresStrictConfirmation {
                 try await handoff(.confirmation, jobID: job.id)
                 stage = "confirmation"
                 job.beginConfirmation(); confirmationBegan = ProcessInfo.processInfo.systemUptime; try await persist(job)
                 // Older jobs may retain the commit RPC's key rather than the
                 // hash lookup's canonical key. Refresh every version without
                 // retransmitting, including resources already marked confirmed.
-                if job.settings.live == .motion {
+                if job.settings.live == .motion || job.livePlan?.kind == "motion_photo" {
                     for index in job.resources.indices {
                         let result = try await engine.invoke("confirm_resource", payload(job.resources[index], account: job.account))
                         try checkpoint(job)
@@ -1155,7 +1161,7 @@ final class HarborModel: ObservableObject {
                 guard dynamic["recognized"] as? Bool == true else { throw HarborError(dynamic["reason"] as? String ?? "REMOTE_MOTION_PENDING") }
             }
             guard job.standardConfirmationPassed else { throw HarborError("REMOTE_NOT_VISIBLE") }
-            job.verificationLevel = job.isLive && job.settings.requiresStrictConfirmation ? "strict" : "standard"
+            job.verificationLevel = job.isDynamic && job.settings.requiresStrictConfirmation ? "strict" : "standard"
             if job.settings.syncAlbums && !job.albumIDs.isEmpty {
                 job.albumsPending = true; try await persist(job)
                 try await synchronizeAlbums(job)

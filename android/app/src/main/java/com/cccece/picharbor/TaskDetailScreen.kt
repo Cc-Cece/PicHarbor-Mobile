@@ -31,7 +31,9 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
                     AsyncImage(media.id,null,Modifier.size(56.dp));Spacer(Modifier.width(12.dp));LText("预览照片")
                 }
                 TextButton(onClick={filename=true},modifier=Modifier.fillMaxWidth().padding(8.dp)){FilenameText(item.name,Modifier.weight(1f))}
-                ProductValue("备份状态",phaseLabel(item.state))
+                ProductValue("备份状态",itemPhaseLabel(item))
+                if(item.livePlan.isNotBlank())ProductValue("识别结果",livePlanLabel(item.livePlan))
+                if(liveWarning(item.livePlan).isNotBlank())Helper(Messages.error(liveWarning(item.livePlan)))
                 ProductValue("确认方式",if(job?.strictConfirmation==true)"保存后继续等待动态处理" else "云端保存确认后完成")
             }
             ProductSection("备份流程") {
@@ -47,7 +49,7 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
             }
             ProductSection {SettingsRow("任务连接策略",onClick={vm.navigate("task-proxy")})}
             ProductSection(if(item.state in setOf("failed","album_pending"))"需要处理" else "当前状态") {
-                LText(if(item.error.isNotBlank())Messages.error(item.error) else phaseLabel(item.state),modifier=Modifier.padding(16.dp))
+                LText(if(item.error.isNotBlank())Messages.error(item.error) else itemPhaseLabel(item),modifier=Modifier.padding(16.dp))
                 if(data.transfer.item==item.id)LinearProgressIndicator(progress={if(data.transfer.total>0)(data.transfer.bytes.toFloat()/data.transfer.total).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth().padding(16.dp))
                 if(item.state in setOf("done","exists"))Button(onClick={vm.navigate("free-space")},modifier=Modifier.fillMaxWidth().padding(16.dp)){LText("前往 Google 相册释放空间")}
             }
