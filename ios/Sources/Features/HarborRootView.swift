@@ -63,7 +63,7 @@ struct HarborRootView: View {
             #if DEBUG
             if model.installTaskPresentationFixture() { selectedTab = 2; return }
             #endif
-            welcome = model.initialized && model.account.isEmpty && selectedTab == 0
+            welcome = model.initialized && model.account.isEmpty && model.accounts.isEmpty && model.credentialStorageAvailable && selectedTab == 0
         }
         .sheet(isPresented: $welcome) { NavigationStack { ConnectionView() }.environmentObject(model) }
         .alert("PicHarbor", isPresented: Binding(get: { !model.notice.isEmpty && L10n.message(model.notice) != L10n.text("已加入备份队列。") }, set: { if !$0 { model.notice = "" } })) {

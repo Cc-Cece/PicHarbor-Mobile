@@ -751,6 +751,21 @@ final class HarborModel: ObservableObject {
         }
     }
     func pump() async {
+        if initialized && account.isEmpty && engine.ready && network.connected && !storageFailed && !switching && !updatingNetwork && !editingQueue && workers.isEmpty {
+            switching = true
+            let restored = await engine.restoreSavedSession()
+            if restored {
+                do { accounts = try KeychainStore.accounts(); credentialStorageAvailable = true; try await loadSettings() }
+                catch { fatalStorage(error) }
+            }
+            switching = false
+            if restored {
+                await applyNetworkSettings()
+                await replayReceipts()
+                await automaticScan()
+                Task { await AccountAvatars.shared.refresh(engine, account: account) }
+            }
+        }
         if pumping { pumpAgain = true; return }
         guard initialized, !account.isEmpty, engine.ready, !storageFailed, !switching, !updatingNetwork, !recoveryRequired, !editingQueue else { return }
         pumping = true

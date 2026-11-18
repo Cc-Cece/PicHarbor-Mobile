@@ -122,6 +122,8 @@ final class Engine: ObservableObject {
     @Published var runtime: [String: String] = [:]
     private let queue = DispatchQueue(label: "io.picharbor.python", qos: .userInitiated, attributes: .concurrent)
     private var booted = false
+    private var restoreBlocked = false
+    private var restoreAttempt: TimeInterval?
     let home: URL
 
     init() {
@@ -148,10 +150,33 @@ final class Engine: ObservableObject {
             guard ready else { throw HarborError("RUNTIME_UNAVAILABLE") }
             let info = try await invoke("probe")
             for key in ["python", "tls", "sqlite"] { runtime[key] = info[key] as? String }
-            if let credential = try KeychainStore.load() {
-                try await connect(credential)
-            } else { message = L10n.text("运行环境检查通过，请连接 Google 账号。") }
         } catch { message = error.localizedDescription; if !ready { booted = false } }
+        busy = false
+        if ready { _ = await restoreSavedSession() }
+    }
+
+    /// A failed launch connection must not permanently look like logout.
+    /// The model retries only while idle; permanent auth failures require user action.
+    @discardableResult
+    func restoreSavedSession() async -> Bool {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard ready, !busy, account.isEmpty, !restoreBlocked,
+              restoreAttempt.map({ now - $0 >= 30 }) ?? true else { return false }
+        restoreAttempt = now
+        busy = true
+        defer { busy = false }
+        do {
+            guard let credential = try KeychainStore.load() else {
+                message = L10n.text("运行环境检查通过，请连接 Google 账号。")
+                return false
+            }
+            try await connect(credential)
+            return true
+        } catch {
+            restoreBlocked = !SavedSessionPolicy.retryable((error as? HarborError)?.code ?? "ENGINE_ERROR")
+            message = error.localizedDescription
+            return false
+        }
     }
 
     func invoke(_ action: String, _ payload: [String: Any] = [:]) async throws -> [String: Any] {
@@ -217,8 +242,8 @@ final class Engine: ObservableObject {
         guard !busy else { message = HarborError("ACCOUNT_BUSY").localizedDescription; return false }
         busy = true
         defer { busy = false }
-        do { try await connect(credential); return true }
-        catch { message = error.localizedDescription; return false }
+        do { try await connect(credential); restoreBlocked = false; restoreAttempt = nil; return true }
+        catch { restoreBlocked = true; message = error.localizedDescription; return false }
     }
 
     func logout() async {
@@ -227,6 +252,7 @@ final class Engine: ObservableObject {
         defer { busy = false }
         do {
             try KeychainStore.clear()
+            restoreBlocked = true
             _ = try await invoke("logout")
             account = ""; records = []; message = L10n.text("已退出，设备上的历史记录保留并按账号隔离。")
         } catch { message = error.localizedDescription }
