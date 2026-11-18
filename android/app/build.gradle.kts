@@ -13,8 +13,8 @@ android {
         applicationId = "com.cccece.picharbor.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 4
-        versionName = "2.0.0-alpha.4"
+        versionCode = 5
+        versionName = "2.0.0-alpha.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
     }
@@ -37,7 +37,7 @@ android {
             keyPassword = System.getenv("PICHARBOR_KEY_PASSWORD")
         }
     }
-    testBuildType = "debug"
+    testBuildType = providers.gradleProperty("deviceTestBuildType").getOrElse("debug")
     buildTypes {
         getByName("debug") { applicationIdSuffix = ".debug" }
         release {
@@ -97,6 +97,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.08.00"))
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("org.json:json:20250517")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

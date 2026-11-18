@@ -18,6 +18,9 @@ import javax.net.ssl.HttpsURLConnection
 
 data class ProxyHealth(val milliseconds:Long?=null,val healthy:Boolean=true,val coolingUntil:Long=0)
 
+/** A controller node name is one URI path segment, not form data (where spaces become '+'). */
+internal fun proxyPathSegment(value:String):String=URLEncoder.encode(value,"UTF-8").replace("+","%20")
+
 /** The same pinned Clash core as iOS, with an app-private loopback listener. */
 class ProxyManager(private val graph:AppGraph) {
     private val mutex=Mutex()
@@ -135,7 +138,7 @@ class ProxyManager(private val graph:AppGraph) {
         }
     }
     suspend fun backups(names:List<String>)=mutex.withLock{initialized.await();save(JSONObject(library.value.toString()).put("backups",JSONArray(names)))}
-    suspend fun url(override:JSONObject?=null):String=mutex.withLock {
+    suspend fun url(override:JSONObject?=null):String=withContext(Dispatchers.IO) { mutex.withLock {
         initialized.await()
         if(!graph.preferences.get().proxyEnabled){stopLocked();return@withLock ""}
         val selected=profile()?:run {
@@ -160,9 +163,9 @@ class ProxyManager(private val graph:AppGraph) {
         if(!choice.optBoolean("ok")||choice.optBoolean("waiting"))throw EngineFailure("PROXY_UNAVAILABLE")
         if(choice.optBoolean("direct"))return@withLock ""
         val name=choice.getString("node")
-        if(current!=name){controller("PUT","/proxies/$group",JSONObject().put("name",name).toString());current=name}
+        if(current!=name){controller("PUT","/proxies/${proxyPathSegment(group)}",JSONObject().put("name",name).toString());current=name}
         "http://127.0.0.1:$port"
-    }
+    } }
     private suspend fun startLocked(selected:JSONObject) {
         val key=selected.toString()
         if(signature==key&&process?.isAlive==true)return
@@ -212,17 +215,18 @@ class ProxyManager(private val graph:AppGraph) {
         return output.toString()
     }
     fun testAll() {
-        if(testing.value)return
+        if(!testing.compareAndSet(false,true))return
         testJob=graph.scope.launch {
-            testing.value=true
             try {
+                initialized.await()
                 val selected=profile()?:return@launch
                 mutex.withLock{startLocked(selected)}
                 val nodes=selected.getJSONArray("nodes")
                 for(i in 0 until nodes.length()) {
                     ensureActive();val name=nodes.getJSONObject(i).getString("name")
-                    val result=runCatching{controller("GET","/proxies/${URLEncoder.encode(name,"UTF-8")}/delay?timeout=5000&url=https%3A%2F%2Fwww.google.com%2Fgenerate_204")}
-                    val next=if(result.isSuccess)ProxyHealth(result.getOrThrow().optLong("delay"),true) else ProxyHealth(null,false,System.currentTimeMillis()+300000)
+                    val result=runCatching{controller("GET","/proxies/${proxyPathSegment(name)}/delay?timeout=5000&url=https%3A%2F%2Fwww.google.com%2Fgenerate_204").getLong("delay").also{require(it>=0)}}
+                    ensureActive()
+                    val next=if(result.isSuccess)ProxyHealth(result.getOrThrow(),true) else ProxyHealth(null,false,System.currentTimeMillis()+300000)
                     health.update{it+(name to next)}
                 }
                 message.value="测速完成"
