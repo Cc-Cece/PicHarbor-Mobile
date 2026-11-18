@@ -74,7 +74,7 @@ struct BackupPreferencesView: View {
             } header: { Text(L10n.text("编辑过的照片与视频")) } footer: { Text(L10n.text("同时保留修改前后的内容；内容相同只备份一份。不保留撤销编辑的记录。")) }
             Section {
                 Toggle(L10n.text("保留相册分类"), isOn: $model.settings.syncAlbums)
-            } footer: { Text(L10n.text("将新备份的照片加入 Google 相册中的对应相册。复用已有相册，不同步本机的删除或重命名。只对新任务生效。")) }
+            } footer: { Text(L10n.text("备份时，按手机里的相簿名称整理到 Google 相册。例如，“旅行”里的照片会放进云端的“旅行”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改相簿名称，不会改变云端内容。只对开启后的新备份任务生效。")) }
             Section { NavigationLink(L10n.text("高级备份检查")) { AdvancedBackupChecksView() } }
         }.navigationTitle(L10n.text("备份偏好")).navigationBarTitleDisplayMode(.inline)
         .onChange(of: model.settings) { _, _ in Task { await model.saveSettings() } }

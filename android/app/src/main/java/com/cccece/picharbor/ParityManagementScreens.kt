@@ -160,13 +160,13 @@ fun ProxyScreen(vm:HarborViewModel,data:HarborUiData) {
             proxy.profile()?.let{ProductValue("正在使用",it.getString("name"),false);ProductValue("节点数量",it.getJSONArray("nodes").length().toString())}
         }
         ProductSection("节点选择与切换","任务可单独设置。测速不会中断正在上传的文件；仅在允许时使用直连。") {
-            ProductPicker("节点选择",library.optString("selection","automatic"),listOf("automatic" to "自动","manual" to "手动"),!vm.busy&&!testing){value->vm.proxyAction{proxy.policy("selection",value)}}
+            ProductPicker("节点选择",library.optString("selection","automatic"),listOf("automatic" to "自动","manual" to "手动"),!vm.busy&&!testing,description="优先保持正常连接，失败后结合延时和近期表现选择其他节点。"){value->vm.proxyAction{proxy.policy("selection",value)}}
             val names=proxy.profile()?.getJSONArray("nodes")?.let{array->(0 until array.length()).map{array.getJSONObject(it).getString("name")}}.orEmpty()
             if(library.optString("selection")=="manual") {
                 ProductPicker("主节点",library.optString("primary"),names.map{it to it},!vm.busy&&!testing){value->vm.proxyAction{proxy.policy("primary",value)}}
                 val backups=library.optJSONArray("backups")?.let{a->(0 until a.length()).map{a.getString(it)}}.orEmpty()
                 names.filter{it!=library.optString("primary")}.forEach{name->NativeCheckRow(name,name in backups,enabled=!vm.busy&&!testing,localized=false){checked->vm.proxyAction{proxy.backups(if(checked)backups+name else backups-name)}}}
-            } else LText("优先保持正常连接，失败后结合延时和近期表现选择其他节点。",modifier=Modifier.padding(16.dp))
+            }
             ToggleRow("所有节点不可用时允许直连","关闭时等待连接，不自动绕过代理",library.optString("exhaustion")=="direct",enabled=!vm.busy&&!testing){allowed->vm.proxyAction{proxy.policy("exhaustion",if(allowed)"direct" else "wait")}}
         }
         ProductSection {

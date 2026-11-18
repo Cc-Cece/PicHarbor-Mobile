@@ -257,6 +257,7 @@
 "备份当前范围" = "Back up current selection";
 "备份批次" = "Backup batch";
 "备份方式" = "Backup method";
+"备份时，按手机里的相簿名称整理到 Google 相册。例如，“旅行”里的照片会放进云端的“旅行”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改相簿名称，不会改变云端内容。只对开启后的新备份任务生效。" = "Organize new backups in Google Photos using your phone’s album names. For example, photos from Travel go into a cloud album called Travel. Later backups use the same album instead of creating a new one each time. Deleting photos or renaming albums on your phone does not change the cloud content. Applies to new backup tasks after enabling this option.";
 "备份来源" = "Backup source";
 "备份此项目" = "Back up this item";
 "备份流程" = "Backup progress";

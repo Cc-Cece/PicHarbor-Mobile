@@ -33,6 +33,17 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
     val accounts by vm.accounts.collectAsState()
     val mode=vm.sheet
     if(mode.isEmpty())return
+    if(mode=="proxy-licenses") {
+        val notice=remember{listOf("NOTICE","LICENSE","THIRD_PARTY_LICENSES.md").joinToString("\n\n"){name->
+            context.assets.open("proxy-notices/$name").bufferedReader().use{it.readText()}
+        }}
+        ProductBottomSheet("代理组件开源许可",{vm.sheet=""}) {
+            androidx.compose.foundation.text.selection.SelectionContainer {
+                Text(notice,style=MaterialTheme.typography.bodySmall)
+            }
+        }
+        return
+    }
     if(mode=="photo-detail") {
         ModalBottomSheet(onDismissRequest={vm.sheet=""},sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
             Box(Modifier.fillMaxWidth().fillMaxHeight(.94f)){DetailScreen(vm,data,sheetMode=true)}
@@ -53,7 +64,7 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
         vm.fromDate=dates.selectedStartDateMillis?.let{localDate(it).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()}?:0
         vm.toDate=dates.selectedEndDateMillis?.let{localDate(it).plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()-1}?:Long.MAX_VALUE
         dateDialog=false;vm.sheet=""
-    }){LText("应用")}},dismissButton={TextButton(onClick={dateDialog=false}){LText("取消")}}){DateRangePicker(dates,modifier=Modifier.heightIn(max=480.dp),showModeToggle=true)}
+    }){LText("应用")}},dismissButton={TextButton(onClick={dateDialog=false}){LText("取消")}}){CompactDateRangePicker(dates,modifier=Modifier.heightIn(max=480.dp))}
     val title=when {
         mode=="account"||mode=="login"->"备份账号"
         mode.startsWith("remove-account:")->"移除账号？"

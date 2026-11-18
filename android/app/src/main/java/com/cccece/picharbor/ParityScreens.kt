@@ -285,7 +285,7 @@ fun SettingsScreen(vm:HarborViewModel,data:HarborUiData) {
         ProductSection {ProductPicker("并发模式",s.pipelineMode,listOf("automatic" to "自动","custom" to "自定义"),!vm.busy,description="自动模式根据设备资源调整，自定义参数可在高级配置中设置。"){vm.setString("pipelineMode",it)};if(s.pipelineMode=="custom")SettingsRow("高级配置",onClick={vm.navigate("pipeline")})}
         ProductSection("上传画质") {ProductPicker("上传画质",s.quality,listOf("original" to "不计配额原画质","quota" to "计配额原画质","saver" to "节省空间"),!vm.busy,description="是否占用空间，以 Google 相册显示为准。",optionDescriptions=mapOf("original" to "保留原始清晰度，使用当前免配额上传方式","quota" to "使用 Google 账号存储空间","saver" to "可能压缩照片和视频")){vm.setString("quality",it)}}
         ProductSection("Live Photo 备份方式") {ProductPicker("备份方式",s.livePhotoPairing,listOf("original" to "原始照片配对","stepwise" to "原始照片配对（分步上传）","motion" to "动态照片封装"),!vm.busy,description="切换方式只影响新任务，已有照片不会自动重新上传。",optionDescriptions=mapOf("original" to "照片与视频配对，按一个媒体项目备份并一次确认","stepwise" to "先保存照片，再关联动态视频","motion" to "单个文件内嵌动态视频，按单文件备份")){vm.setString("livePhotoPairing",it)}}
-        ProductSection(footer="按来源文件夹将新备份的照片加入 Google 相册中的对应相册。复用已有相册，不同步本机的删除或重命名。只对新任务生效。") {ToggleRow("保留相册分类","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
+        ProductSection(footer="备份时，按手机里的文件夹名称整理到 Google 相册。例如，“相机”里的照片会放进云端的“相机”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改文件夹名称，不会改变云端内容。只对开启后的新备份任务生效。") {ToggleRow("保留相册分类","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
         ProductSection {SettingsRow("高级备份检查",onClick={vm.navigate("checks")})}
     }
 }
@@ -417,7 +417,17 @@ fun DiagnosticsScreen(vm:HarborViewModel,data:HarborUiData,onExport:()->Unit) {
         ProductSection("持续诊断",footer="覆盖日期按现存日志文件计算，事件范围以导出为准。") {
             ProductValue("日志保留","14 天 / 64 MiB")
             val dates=java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.SHORT).withLocale(locale).withZone(java.time.ZoneId.systemDefault())
-            ProductValue("现存覆盖",coverage?.let{dates.format(java.time.Instant.ofEpochMilli(it.first))+" – "+dates.format(java.time.Instant.ofEpochMilli(it.second))}?:"暂无日志")
+            Column(Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                LText("现存覆盖")
+                if(coverage==null)LText("暂无日志",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                else listOf("开始日期" to coverage!!.first,"结束日期" to coverage!!.second).forEach{(label,time)->
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically) {
+                        LText(label,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(dates.format(java.time.Instant.ofEpochMilli(time)),style=MaterialTheme.typography.bodyMedium,
+                            modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
+            }
         }
         ProductSection("导出范围",footer="日志默认常开，保留 14 天或 64 MiB。导出仅包含现存日志，实际覆盖范围记录在导出文件中。") {
             SettingsRow("导出诊断日志","选择日期范围，包含 JSONL 与同源可读文本 ZIP",onClick=onExport)
@@ -428,12 +438,20 @@ fun DiagnosticsScreen(vm:HarborViewModel,data:HarborUiData,onExport:()->Unit) {
 @Composable
 fun AboutScreen(vm:HarborViewModel,data:HarborUiData) {
     val context=LocalView.current.context
-    ProductPage("关于 PicHarbor",vm) {
-        ProductSection {ProductValue("版本",BuildConfig.VERSION_NAME);ProductValue("应用标识",BuildConfig.APPLICATION_ID,false)}
-        ProductSection("组件与许可证") {
-            ProductValue("界面","Kotlin / Jetpack Compose",false);ProductValue("共享核心","gpmc / Python",false);ProductValue("应用内代理","ProjectClash / Clash",false)
-            SettingsRow("开源许可",onClick={vm.sheet="licenses"})
-            SettingsRow("项目仓库",onClick={if(!context.openProductIntent(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Cc-Cece/PicHarbor-Mobile"))))vm.say("暂时无法打开此页面")})
+    ProductPage("关于",vm) {
+        ProductSection {
+            Column(Modifier.fillMaxWidth().padding(vertical=32.dp,horizontal=16.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                LIcon(Icons.Outlined.CloudUpload,null,Modifier.size(64.dp),MaterialTheme.colorScheme.primary)
+                Text("PicHarbor",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold)
+                LText("开发版 ${BuildConfig.VERSION_NAME}",color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        ProductSection {LText("面向 Android 的照片与视频备份。取回内容请使用 Google 相册官方客户端。",modifier=Modifier.padding(16.dp))}
+        ProductSection("开源组件") {
+            LText("gpmc · GPL-3.0\nCPython · Python Software Foundation License\nblackboxprotobuf · MIT\nRequests 及依赖许可证随应用分发。",modifier=Modifier.padding(16.dp),style=MaterialTheme.typography.bodyMedium)
+            SettingsRow("项目源码与许可证",onClick={if(!context.openProductIntent(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Cc-Cece/PicHarbor-Mobile"))))vm.say("暂时无法打开此页面")})
+            LText("Clash · GPL-3.0",localize=false,modifier=Modifier.padding(horizontal=16.dp,vertical=12.dp),style=MaterialTheme.typography.bodyMedium)
+            SettingsRow("代理组件开源许可",onClick={vm.sheet="proxy-licenses"})
         }
     }
 }

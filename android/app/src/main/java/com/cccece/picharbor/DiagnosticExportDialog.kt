@@ -34,7 +34,7 @@ fun DiagnosticExportDialog(onDismiss:()->Unit,onExport:(LogRange)->Unit) {
             val first=dates.selectedStartDateMillis;val last=dates.selectedEndDateMillis
             if(first!=null&&last!=null&&last>=first){startDate=first;endDate=last;calendar=false}
         }){LText("确定")}},dismissButton={TextButton(onClick={calendar=false}){LText("取消")}}) {
-        DateRangePicker(dates,modifier=Modifier.heightIn(max=minOf(480.dp,configuration.screenHeightDp.dp*.70f)))
+        CompactDateRangePicker(dates,modifier=Modifier.heightIn(max=minOf(480.dp,configuration.screenHeightDp.dp*.70f)))
     } else ProductBottomSheet("导出日志",onDismiss) {
         Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Choice("全部",!custom,"当前仍保留的全部日志"){custom=false}

@@ -1452,5 +1452,10 @@
   "更改可访问的照片": "Change accessible photos",
   "照片与视频权限": "Photo and video access",
   "照片访问权限": "Photo access permissions",
-  "相机暂不可用，请重试或从图片导入。": "Camera unavailable. Retry or import an image."
+  "相机暂不可用，请重试或从图片导入。": "Camera unavailable. Retry or import an image.",
+  "备份时，按手机里的文件夹名称整理到 Google 相册。例如，“相机”里的照片会放进云端的“相机”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改文件夹名称，不会改变云端内容。只对开启后的新备份任务生效。": "Organize new backups in Google Photos using your phone’s folder names. For example, photos from Camera go into a cloud album called Camera. Later backups use the same album instead of creating a new one each time. Deleting photos or renaming folders on your phone does not change the cloud content. Applies to new backup tasks after enabling this option.",
+  "备份时，按手机里的相簿名称整理到 Google 相册。例如，“旅行”里的照片会放进云端的“旅行”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改相簿名称，不会改变云端内容。只对开启后的新备份任务生效。": "Organize new backups in Google Photos using your phone’s album names. For example, photos from Travel go into a cloud album called Travel. Later backups use the same album instead of creating a new one each time. Deleting photos or renaming albums on your phone does not change the cloud content. Applies to new backup tasks after enabling this option.",
+  "未选择": "Not selected",
+  "面向 Android 的照片与视频备份。取回内容请使用 Google 相册官方客户端。": "Photo and video backup for Android. Use the official Google Photos app to retrieve your content.",
+  "gpmc · GPL-3.0\nCPython · Python Software Foundation License\nblackboxprotobuf · MIT\nRequests 及依赖许可证随应用分发。": "gpmc · GPL-3.0\nCPython · Python Software Foundation License\nblackboxprotobuf · MIT\nLicenses for Requests and its dependencies are included in the app."
 }
