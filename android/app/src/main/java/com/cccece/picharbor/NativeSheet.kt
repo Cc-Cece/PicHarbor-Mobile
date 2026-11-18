@@ -46,6 +46,14 @@ fun sheetDismissAction():(()->Unit)->Unit=LocalSheetDismiss.current?:{action->ac
 
 private class SheetInput {var clear:()->Unit={}}
 
+internal fun commitSheetExit(requested:Boolean,onDismiss:()->Unit,action:(()->Unit)?,onHidden:()->Unit) {
+    // Clear the owner's visible request even when a selection has an action.
+    // Apply the action afterwards so it can intentionally open another panel.
+    if(requested)onDismiss()
+    action?.invoke()
+    onHidden()
+}
+
 /** Keeps the native dialog composed until hide() finishes, including owner-driven closes. */
 @Composable
 fun NativeModalSheet(
@@ -67,8 +75,7 @@ fun NativeModalSheet(
     fun commitExit() {
         val action=pendingAction
         pendingAction=null
-        if(action!=null)action() else if(requested)latestDismiss()
-        latestHidden()
+        commitSheetExit(requested,{latestDismiss()},action,{latestHidden()})
     }
     fun close(after:(()->Unit)?=null) {
         if(!lifecycle.mounted||lifecycle.closing||!requested)return

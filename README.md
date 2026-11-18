@@ -30,6 +30,8 @@ Android `2.0.0-alpha.15` / iOS `0.2.38` 增加按资源识别的“自动（推�
 
 iOS `0.2.39` 修复快捷指令续签成功后必需操作仍显示 2/3，自动恢复旧版成功记录并在返回前台时刷新，见 [续签状态修复记录](specs/SELF-REFRESH-SETUP-FIX-2026-11-18.md)。Android 保持 `2.0.0-alpha.15`，只编译、不安装。
 
+Android `2.0.0-alpha.16` 修复高级实况设置选择后无法再次打开底部面板，并将入口图标改为向下箭头，见 [面板修复记录](specs/ANDROID-SHEET-REOPEN-2026-11-18.md)。只编译、不安装。
+
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
 
 ## Development

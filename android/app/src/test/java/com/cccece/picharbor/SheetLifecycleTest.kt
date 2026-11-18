@@ -5,6 +5,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SheetLifecycleTest {
+    @Test fun selectingAnOptionClearsOwnerAndAllowsRepeatedOpening():Unit=runBlocking {
+        val sheet=SheetLifecycle();var mode="live-photo";var selections=0;var hidden=0
+        repeat(3) {
+            mode="live-photo";sheet.present()
+            sheet.close({}) {commitSheetExit(mode.isNotEmpty(),{mode=""},{selections++},{hidden++})}
+            assertEquals("",mode);assertFalse(sheet.mounted);assertFalse(sheet.closing)
+        }
+        assertEquals(3,selections);assertEquals(3,hidden)
+    }
+    @Test fun deferredActionCanOpenAnotherPanelAfterOldOwnerIsDismissed() {
+        var mode="old";var dismissed=0;var retained="old"
+        commitSheetExit(true,{dismissed++;mode=""},{mode="replacement"},{if(mode.isEmpty())retained=""})
+        assertEquals(1,dismissed);assertEquals("replacement",mode);assertEquals("old",retained)
+        commitSheetExit(false,{fail("Already closed owner must not be dismissed again")},null,{retained=""})
+        assertEquals("",retained)
+    }
     @Test fun selectionWaitsForExitAndRepeatedClicksDoNotCommitTwice():Unit=runBlocking {
         val sheet=SheetLifecycle();sheet.present()
         val animation=CompletableDeferred<Unit>();var commits=0

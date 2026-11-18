@@ -293,7 +293,7 @@ fun SettingsScreen(vm:HarborViewModel,data:HarborUiData) {
         ProductSection("上传画质") {ProductPicker("上传画质",s.quality,listOf("original" to "原始画质（不占用配额）","saver" to "节省空间（不占用配额）","quota" to "原始画质（占用配额）"),!vm.busy,description="元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。",optionDescriptions=mapOf("original" to "保留原始清晰度，使用当前免配额上传方式","quota" to "使用 Google 账号存储空间","saver" to "可能压缩照片和视频")){vm.setString("quality",it)}}
         ProductSection("Live Photo 备份方式") {
             ProductPicker("备份方式",if(s.livePhotoPairing=="automatic")"automatic" else "manual",listOf("automatic" to "自动（推荐）","manual" to "手动"),!vm.busy,description="逐项识别并保留原有形式；不会自动转换格式。切换只影响新任务。"){value->vm.setString("livePhotoPairing",if(value=="automatic")"automatic" else s.livePhotoPairing.takeUnless{it=="automatic"}?:"original")}
-            if(s.livePhotoPairing!="automatic")SettingsRow("高级实况设置",livePhotoLabel(s.livePhotoPairing),onClick={vm.sheet="live-photo"})
+            if(s.livePhotoPairing!="automatic")SettingsRow("高级实况设置",livePhotoLabel(s.livePhotoPairing),onClick={vm.sheet="live-photo"},trailing={LIcon(Icons.Outlined.KeyboardArrowDown,null)})
         }
         ProductSection(footer="备份时，按手机里的文件夹名称整理到 Google 相册。例如，“相机”里的照片会放进云端的“相机”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改文件夹名称，不会改变云端内容。只对开启后的新备份任务生效。") {ToggleRow("保留相册分类","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
         ProductSection {SettingsRow("高级备份检查",onClick={vm.navigate("checks")})}
