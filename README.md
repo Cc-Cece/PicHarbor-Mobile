@@ -6,9 +6,11 @@ The product and page structure follow the frozen iOS `e0c495c9b23dba5b40eaff7e01
 
 本轮交付及构建安装记录见 [DELIVERY-2026-11-18.md](specs/DELIVERY-2026-11-18.md)。代码位于 `feat/mobile-framework-parity`，用户实机验收独立记录。
 
-后续 Android 原生体验优化版本为 `2.0.0-alpha.4`，见 [优化记录](specs/ANDROID-NATIVE-EXPERIENCE-2026-11-18.md)；保留已确认的页面框架。按用户最新要求只编译，不安装，自动安装任务已停用。
+Android 原生体验优化基线为 `2.0.0-alpha.4`，见 [优化记录](specs/ANDROID-NATIVE-EXPERIENCE-2026-11-18.md)；保留已确认的页面框架。该轮按用户要求只编译，自动安装任务已停用。
 
-最新 Android 修复版本为 `2.0.0-alpha.5`，解决带空格的代理节点名称测速失败及后续连接不可用，见 [修复和实机验证记录](specs/PROXY-FIX-2026-11-18.md)。用户已单独授权本次代理测试和安装；自动安装任务继续停用。
+Android 代理修复版本 `2.0.0-alpha.5` 解决带空格的代理节点名称测速失败及后续连接不可用，见 [修复和实机验证记录](specs/PROXY-FIX-2026-11-18.md)。用户已单独授权代理测试和安装；自动安装任务继续停用。
+
+最新 Android 版本为 `2.0.0-alpha.6`，增加活动左滑操作、照片状态标志底色，并将活动菜单改为仅图标，见 [界面调整记录](specs/ANDROID-UI-ADJUSTMENTS-2026-11-18.md)。
 
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
 

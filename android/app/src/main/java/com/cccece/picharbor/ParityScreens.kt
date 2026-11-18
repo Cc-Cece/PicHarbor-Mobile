@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
@@ -194,9 +195,13 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
                     var failed by remember(imageKey){mutableStateOf(false)}
                     AsyncImage(remember(imageKey,context){coil.request.ImageRequest.Builder(context).data(Uri.parse(m.id)).memoryCacheKey(imageKey).diskCacheKey(imageKey).build()},m.name,Modifier.fillMaxSize(),contentScale=ContentScale.Crop,onError={failed=true},onSuccess={failed=false})
                     if(failed)Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh),contentAlignment=Alignment.Center){LIcon(Icons.Outlined.BrokenImage,"无法加载预览",tint=MaterialTheme.colorScheme.onSurfaceVariant)}
-                    if(data.status(m)=="uploaded")LIcon(Icons.Outlined.CloudDone,"已备份",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
-                    else if(data.status(m)=="uploading")LIcon(Icons.Outlined.Sync,"备份中",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
-                    else if(data.status(m)=="error")LIcon(Icons.Outlined.ErrorOutline,"需要处理",Modifier.align(Alignment.BottomEnd).padding(5.dp),tint=Color.White)
+                    val status=data.status(m)
+                    if(status in setOf("uploaded","uploading","error"))Surface(
+                        modifier=Modifier.align(Alignment.BottomEnd).padding(5.dp).size(28.dp),shape=CircleShape,shadowElevation=1.dp,
+                        color=when(status){"uploaded"->Color(0xFF1B7F46);"uploading"->MaterialTheme.colorScheme.primary;else->MaterialTheme.colorScheme.error},
+                        contentColor=when(status){"uploaded"->Color.White;"uploading"->MaterialTheme.colorScheme.onPrimary;else->MaterialTheme.colorScheme.onError}
+                    ) {LIcon(when(status){"uploaded"->Icons.Outlined.CloudDone;"uploading"->Icons.Outlined.Sync;else->Icons.Outlined.ErrorOutline},
+                        when(status){"uploaded"->"已备份";"uploading"->"备份中";else->"需要处理"},Modifier.padding(5.dp))}
                     if(m.video)LIcon(Icons.Outlined.PlayArrow,"视频",Modifier.align(Alignment.BottomStart).padding(5.dp),tint=Color.White)
                     if(vm.selectionMode)Checkbox(m.id in vm.selected,onCheckedChange=null,modifier=Modifier.align(Alignment.TopEnd))
                 }}

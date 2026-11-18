@@ -1,6 +1,8 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.cccece.picharbor
 
+import androidx.activity.compose.BackHandler
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
@@ -70,6 +72,9 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
     var remove by remember(data.settings.account,archived){mutableStateOf(false)}
     var selecting by rememberSaveable(data.settings.account,archived){mutableStateOf(false)}
     var selected by remember(data.settings.account,archived){mutableStateOf(setOf<String>())}
+    var revealed by remember(data.settings.account,archived,source,status){mutableStateOf<String?>(null)}
+    var rowRemoval by remember(data.settings.account,archived){mutableStateOf<List<String>>(emptyList())}
+    BackHandler(revealed!=null){revealed=null}
     var limit by rememberSaveable{mutableIntStateOf(200)}
     LaunchedEffect(source,status){vm.graph.preferences.string(if(archived)"archiveSource" else "activitySource",source);if(!archived)vm.graph.preferences.string("activityStatus",status)}
     val allItems=remember(data.items){data.items.filter{!it.hidden}.groupBy{it.jobId}}
@@ -85,7 +90,7 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
     val archivable=remember(jobs,visible){jobs.flatMap{visible[it.id].orEmpty()}.filter{it.state in setOf("done","exists")}}
     Column(Modifier.fillMaxSize()) {
         PageTitle(if(archived)"归档记录" else "活动",vm,!archived) {
-            Box {TextButton(onClick={menu=true}){LIcon(Icons.Outlined.MoreHoriz,"活动选项");LText("更多")}
+            Box {IconButton(onClick={menu=true}){LIcon(Icons.Outlined.MoreHoriz,"活动选项")}
                 DropdownMenu(menu,{menu=false}) {
                     if(!archived){
                         DropdownMenuItem(text={LText("暂停任务")},enabled=pending.isNotEmpty(),onClick={menu=false;vm.itemActions(pending,"pause")})
@@ -106,7 +111,13 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
             items(jobs.take(limit),key={it.id}){job->
                 val matching=visible[job.id].orEmpty()
                 val all=allItems[job.id].orEmpty()
-                Surface(onClick={if(all.size>1)vm.showJob(job.id,status,archived)else matching.firstOrNull()?.let(vm::showItem)},color=MaterialTheme.colorScheme.surfaceContainerLow) {
+                val completed=matching.all{it.state in setOf("done","exists")}
+                val unfinished=matching.filter{it.state !in setOf("done","exists","cancelled")}
+                val swipeLabel=if(completed)if(archived)"取消归档" else "归档" else if(unfinished.isNotEmpty())"移除" else ""
+                ActivitySwipeRow(job.id,swipeLabel,!completed,!vm.busy,revealed,{revealed=it},{
+                    if(completed)vm.archiveSelected(matching.map{it.id},archived) else rowRemoval=unfinished.map{it.id}
+                }) {
+                Surface(onClick={if(revealed==job.id)revealed=null else if(all.size>1)vm.showJob(job.id,status,archived)else matching.firstOrNull()?.let(vm::showItem)},color=MaterialTheme.colorScheme.surfaceContainerLow) {
                     Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         AsyncImage(matching.firstOrNull()?.mediaId,null,Modifier.size(52.dp),contentScale=ContentScale.Crop)
                         Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
@@ -119,11 +130,15 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
                         LIcon(Icons.Outlined.ChevronRight,null)
                     }
                 }
+                }
             }
             if(jobs.size>limit)item{TextButton(onClick={limit+=200}){LText("显示更多")}}
         }
     }
     if(remove)AlertDialog(onDismissRequest={remove=false},title={LText("移除未完成任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={remove=false;vm.itemActions(pending,"remove")}){LText("停止并移除")}},dismissButton={TextButton(onClick={remove=false}){LText("取消")}})
+    if(rowRemoval.isNotEmpty())AlertDialog(onDismissRequest={rowRemoval=emptyList()},title={LText("移除此任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},
+        confirmButton={TextButton(enabled=!vm.busy,onClick={val ids=rowRemoval.filter{it in pending};rowRemoval=emptyList();vm.itemActions(ids,"remove")},colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){LText("停止并移除")}},
+        dismissButton={TextButton(onClick={rowRemoval=emptyList()}){LText("取消")}})
     if(selecting)AlertDialog(
         onDismissRequest={selecting=false},title={LText(if(archived)"选择取消归档" else "选择归档")},
         text={LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp)) {
