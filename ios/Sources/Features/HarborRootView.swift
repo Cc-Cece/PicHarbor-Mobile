@@ -105,8 +105,12 @@ struct BackupDashboard: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 14) {
-                    Image(systemName: model.activeCount > 0 ? "icloud.and.arrow.up.fill" : "checkmark.icloud.fill")
-                        .font(.system(size: 44)).foregroundStyle(.blue).accessibilityHidden(true)
+                    HStack(alignment: .center) {
+                        Image(systemName: model.activeCount > 0 ? "icloud.and.arrow.up.fill" : "checkmark.icloud.fill")
+                            .font(.system(size: 44)).foregroundStyle(.blue).accessibilityHidden(true)
+                        Spacer(minLength: 12)
+                        AutomaticBackupIndicator(enabled: model.settings.automatic)
+                    }
                     Text(model.activeCount > 0 ? L10n.text("备份进行中") : L10n.text("让回忆安心留存")).font(.title2.bold())
                     Text(model.account.isEmpty ? L10n.text("连接 Google 账号，开始备份你的照片与视频。") : model.account).font(.subheadline).foregroundStyle(.secondary)
                     if model.account.isEmpty { NavigationLink(L10n.text("连接 Google 账号")) { ConnectionView() } }
@@ -148,6 +152,21 @@ struct BackupDashboard: View {
     }
     private func metric(_ title: String, _ value: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) { Text(value.formatted()).font(.title2.bold()).monospacedDigit(); Text(title).font(.caption).foregroundStyle(.secondary) }
+    }
+}
+
+private struct AutomaticBackupIndicator: View {
+    let enabled: Bool
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: enabled ? "checkmark.circle.fill" : "pause.circle")
+                .foregroundStyle(enabled ? Color.green : Color.secondary).accessibilityHidden(true)
+            Text(L10n.text("自动备份"))
+            Text(L10n.text(enabled ? "已开启" : "未开启")).foregroundStyle(.secondary)
+        }
+        .font(.caption).padding(.horizontal, 10).padding(.vertical, 7)
+        .background(.quaternary, in: Capsule())
+        .accessibilityElement(children: .combine).accessibilityIdentifier("backup.automaticStatus")
     }
 }
 

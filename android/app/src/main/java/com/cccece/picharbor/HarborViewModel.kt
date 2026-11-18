@@ -21,6 +21,7 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     val records=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.backupsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     val jobs=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.jobsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     val items=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.itemsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
+    val uploadWorkload=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.uploadWorkloadFlow(it)}.stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
     val statistics=settings.map{it.account}.distinctUntilChanged().flatMapLatest{graph.dao.statisticsFlow(it)}.stateIn(viewModelScope,SharingStarted.Eagerly,emptyList())
     val inspectedJob=MutableStateFlow("")
     var inspectedItem by mutableStateOf("");private set

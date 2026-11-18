@@ -82,7 +82,7 @@ struct PipelineActivitySummary: View {
     var ids: Set<String>?
     var body: some View {
         let counts = model.pipelineActivity(ids: ids)
-        if counts.values.contains(where: { $0 > 0 }) {
+        if counts.values.contains(where: { $0 > 0 }) || (ids == nil && model.activeCount > 0) {
             Text(L10n.text("准备中 {0} · 上传中 {1} · 确认中 {2}", [String((counts[.preparation] ?? 0) + (counts[.lookup] ?? 0)), String(counts[.upload] ?? 0), String((counts[.commit] ?? 0) + (counts[.confirmation] ?? 0))]))
                 .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("pipeline.activity")
         }

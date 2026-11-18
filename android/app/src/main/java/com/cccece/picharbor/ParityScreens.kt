@@ -226,23 +226,25 @@ fun BackupConfirmation(vm:HarborViewModel,data:HarborUiData,title:String,count:I
 @Composable
 fun BackupScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
     var confirm by rememberSaveable{mutableStateOf(false)}
-    val active=data.items.count{!it.hidden&&it.state !in setOf("done","exists","cancelled")}
+    val workload by vm.uploadWorkload.collectAsState()
+    val work=remember(workload,data.settings.account){workload.filter{it.account==data.settings.account}}
+    val active=work.size
     ProductPage("备份",vm,true) {
         ProductSection {
             Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                LIcon(if(active>0)Icons.Outlined.CloudUpload else Icons.Outlined.CloudDone,null,Modifier.size(44.dp),MaterialTheme.colorScheme.primary)
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    LIcon(if(active>0)Icons.Outlined.CloudUpload else Icons.Outlined.CloudDone,null,Modifier.size(44.dp),MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.weight(1f));AutomaticBackupIndicator(data.settings.auto)
+                }
                 LText(if(active>0)"备份进行中" else "让回忆安心留存",style=MaterialTheme.typography.titleLarge)
                 LText(data.settings.account.ifEmpty{"连接 Google 账号，开始备份你的照片与视频。"},localize=data.settings.account.isEmpty())
                 if(data.settings.account.isEmpty())ProductAction("连接 Google 账号",onClick={vm.navigate("connection")})
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                     listOf("已备份" to data.doneCount,"待完成" to active,"可访问" to data.logicalMedia.size).forEach{(label,count)->Column {LText(count.toString(),style=MaterialTheme.typography.titleLarge);LText(label,style=MaterialTheme.typography.labelMedium)}}
                 }
-                if(data.activeJob.isNotEmpty()) {
-                    LinearProgressIndicator(progress={if(data.transfer.total>0)(data.transfer.bytes.toFloat()/data.transfer.total).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
-                    LText("${localize(phaseLabel(data.transfer.phase))} · ${formatSize(data.transfer.bytes)} / ${formatSize(data.transfer.total)} · ${formatSize(data.transfer.speed)}/s",localize=false,style=MaterialTheme.typography.bodySmall)
-                }
+                if(active>0)BackupTransferMetrics(vm,work)
                 val pipeline by vm.graph.pipeline.activity.collectAsState()
-                if(pipeline.values.any{it>0})LText("准备中 ${(pipeline["preparation"]?:0)+(pipeline["lookup"]?:0)} · 上传中 ${pipeline["upload"]?:0} · 确认中 ${(pipeline["commit"]?:0)+(pipeline["confirmation"]?:0)}",style=MaterialTheme.typography.bodySmall)
+                if(active>0||pipeline.values.any{it>0})LText("准备中 ${(pipeline["preparation"]?:0)+(pipeline["lookup"]?:0)} · 上传中 ${pipeline["upload"]?:0} · 确认中 ${(pipeline["commit"]?:0)+(pipeline["confirmation"]?:0)}",style=MaterialTheme.typography.bodySmall)
             }
         }
         ProductSection {

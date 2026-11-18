@@ -108,6 +108,12 @@ class BackupRepository(private val graph:AppGraph) {
     val running get()=lock.isLocked
     val progress=MutableStateFlow(TransferProgress())
     val inFlight=MutableStateFlow<Map<String,TransferProgress>>(emptyMap())
+    private val transferRates=UploadRateTracker()
+    fun transferSpeed(now:Long,active:Set<String>):Double?=transferRates.speed(now,active)
+    private fun publishTransfer(value:TransferProgress) {
+        transferRates.record(value)
+        progress.value=value;inFlight.update{it+(value.item to value)}
+    }
     val activeJob=MutableStateFlow("")
     val notice=MutableStateFlow("")
     fun onWifi():Boolean {
@@ -338,7 +344,7 @@ class BackupRepository(private val graph:AppGraph) {
     }
     suspend fun stopAndWait() {
         stopping.set(true)
-        lock.withLock { activeJob.value="";progress.value=TransferProgress();inFlight.value=emptyMap() }
+        lock.withLock { activeJob.value="";progress.value=TransferProgress();inFlight.value=emptyMap();transferRates.clear() }
     }
     suspend fun resume(jobId:String) {
         val job=graph.dao.job(jobId)?:return
@@ -488,6 +494,7 @@ class BackupRepository(private val graph:AppGraph) {
                         if(graph.dao.item(item.id)?.error in setOf("LOGIN_REQUIRED","DEVICE_VERIFICATION","ENCRYPTED_TOKEN"))authenticationFailure.set(true)
                         val done=completed.incrementAndGet();notify("正在备份 · $done / $total",if(total>0)done*100/total else 0)
                     } } finally {
+                        inFlight.update{it-item.id};transferRates.finish(item.id)
                         Diagnostics.event(if(acquired)"permit.released" else "wait.finished",waiting,JSONObject().put("kind","permit").put("outcome",if(acquired)"released" else "cancelled"))
                     } } }.awaitAll()
                 }
@@ -540,7 +547,7 @@ class BackupRepository(private val graph:AppGraph) {
                     graph.dao.items(id).filter{it.state in setOf("hashing","checking","uploading","finalizing","finalizing_album")}.forEach{graph.dao.putItem(it.copy(state="queued"))}
                     if(graph.dao.job(id)?.state in setOf("running","pausing"))graph.dao.jobState(id,if(stopping.get())"paused" else "queued")
                 }
-                activeJob.value="";progress.value=TransferProgress();inFlight.value=emptyMap();lock.unlock()
+                activeJob.value="";progress.value=TransferProgress();inFlight.value=emptyMap();transferRates.clear();lock.unlock()
             }
         }
     }
@@ -676,7 +683,7 @@ class BackupRepository(private val graph:AppGraph) {
             if(job.liveStrategy=="motion")keyframeUs(video)?.let{request.put("keyframe_us",it)}
             graph.dao.putItem(item.copy(state="uploading"))
             val result=graph.engine.call("process_pair",request,EngineCallback(cancelled){event->
-                progress.value=TransferProgress(job.id,item.id,media.name,event.optString("phase"),event.optLong("completed"),event.optLong("total"))
+                publishTransfer(TransferProgress(job.id,item.id,media.name,event.optString("phase"),event.optLong("completed"),event.optLong("total")))
             })
             if(cancelled()||graph.dao.job(job.id)?.state=="ended")throw EngineFailure("JOB_PAUSED")
             if(result.optString("state")=="waiting_confirmation") {
@@ -938,11 +945,11 @@ class BackupRepository(private val graph:AppGraph) {
                 if(event.optString("phase")=="uploaded") {
                     runBlocking { latest=uploaded(job,media,latest,event) }
                     val current=TransferProgress(job.id,item.id,media.name,"finalizing_album",media.size,media.size)
-                    progress.value=current;inFlight.update{it+(item.id to current)}
+                    publishTransfer(current)
                 } else if(now-emittedAt>200_000_000||event.optString("phase")!="uploading") {
                     val bytes=event.optLong("completed");val elapsed=(now-previousAt).coerceAtLeast(1)
                     val current=TransferProgress(job.id,item.id,media.name,event.optString("phase"),bytes,event.optLong("total"),((bytes-previousBytes).coerceAtLeast(0)*1_000_000_000/elapsed))
-                    progress.value=current;inFlight.update{it+(item.id to current)}
+                    publishTransfer(current)
                     previousBytes=bytes;previousAt=now;emittedAt=now
                 }
             }

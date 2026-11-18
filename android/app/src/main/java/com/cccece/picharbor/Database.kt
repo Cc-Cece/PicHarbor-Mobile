@@ -49,6 +49,8 @@ data class SuppressedAsset(val account: String, val mediaId: String, val modifie
 
 @Dao
 interface HarborDao {
+    @Query("SELECT i.id,i.bytes,i.state,i.remoteKey,i.account,CASE WHEN m.pairingID IS NOT NULL AND m.pairingID!='' AND m.pairingID!='@embedded-motion' THEN 1 ELSE 0 END AS multiResource FROM items i JOIN jobs j ON j.id=i.jobId LEFT JOIN media m ON m.id=i.mediaId WHERE i.account=:account AND j.account=:account AND i.hidden=0 AND j.hidden=0 AND j.state NOT IN ('paused','pausing','ended','auth_required') AND i.state IN ('queued','hashing','checking','uploading','finalizing','finalizing_album','waiting_confirmation')")
+    fun uploadWorkloadFlow(account:String):Flow<List<UploadWorkloadEntry>>
     @Query("SELECT * FROM core_tasks") suspend fun coreTasks(): List<CoreTaskSnapshot>
     @Query("SELECT * FROM core_tasks WHERE id=:id") suspend fun coreTask(id: String): CoreTaskSnapshot?
     @Upsert suspend fun putCoreTask(task: CoreTaskSnapshot)
