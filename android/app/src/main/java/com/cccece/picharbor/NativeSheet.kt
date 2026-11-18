@@ -18,6 +18,11 @@ internal class SheetLifecycle {
         private set
     private var generation=0
     fun present(){generation++;mounted=true;closing=false}
+    fun finishNativeExit():Boolean {
+        if(!mounted)return false
+        generation++;mounted=false;closing=false
+        return true
+    }
     suspend fun close(animate:suspend ()->Unit,commit:()->Unit):Boolean {
         if(!mounted||closing)return false
         val attempt=generation
@@ -55,22 +60,28 @@ fun NativeModalSheet(
     val scope=rememberCoroutineScope()
     val input=remember{SheetInput()}
     var closingJob by remember{mutableStateOf<Job?>(null)}
+    var pendingAction by remember{mutableStateOf<(() ->Unit)?>(null)}
     val latestDismiss by rememberUpdatedState(onDismiss)
     val latestHidden by rememberUpdatedState(onHidden)
     val requested by rememberUpdatedState(visible)
+    fun commitExit() {
+        val action=pendingAction
+        pendingAction=null
+        if(action!=null)action() else if(requested)latestDismiss()
+        latestHidden()
+    }
     fun close(after:(()->Unit)?=null) {
         if(!lifecycle.mounted||lifecycle.closing||!requested)return
+        pendingAction=after
         input.clear()
         closingJob=scope.launch(start=CoroutineStart.UNDISPATCHED) {
-            lifecycle.close({state.hide()}) {
-                if(after!=null)after() else latestDismiss()
-                latestHidden()
-            }
+            lifecycle.close({state.hide()}){commitExit()}
         }
     }
     LaunchedEffect(visible,contentKey) {
         if(visible) {
             closingJob?.cancel()
+            pendingAction=null
             val retained=lifecycle.mounted
             lifecycle.present()
             // A fresh ModalBottomSheet shows itself after its anchors are measured.
@@ -82,7 +93,14 @@ fun NativeModalSheet(
             else latestHidden()
         }
     }
-    if(lifecycle.mounted)ModalBottomSheet(onDismissRequest={close()},sheetState=state) {
+    if(lifecycle.mounted)ModalBottomSheet(onDismissRequest={
+        // Material may finish its own back/scrim/drag animation while an owner-
+        // driven hide is cancelled. Release that already-hidden window exactly once.
+        if(!state.isVisible) {
+            closingJob?.cancel()
+            if(lifecycle.finishNativeExit())commitExit()
+        } else close()
+    },sheetState=state,sheetGesturesEnabled=visible&&!lifecycle.closing) {
         val focus=LocalFocusManager.current
         val keyboard=LocalSoftwareKeyboardController.current
         SideEffect{input.clear={focus.clearFocus(force=true);keyboard?.hide()}}

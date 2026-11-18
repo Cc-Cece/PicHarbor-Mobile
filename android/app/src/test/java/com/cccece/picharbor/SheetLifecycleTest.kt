@@ -31,4 +31,13 @@ class SheetLifecycleTest {
         sheet.close({}){commits++}
         assertFalse(sheet.mounted);assertEquals(1,commits)
     }
+    @Test fun platformBackFinishingAnExitCannotLeaveAWindowOrRepeatTheOldCallback():Unit=runBlocking {
+        val sheet=SheetLifecycle();sheet.present();var commits=0
+        val animation=CompletableDeferred<Unit>()
+        val first=launch(start=CoroutineStart.UNDISPATCHED){sheet.close({animation.await()}){commits++}}
+        assertTrue(sheet.finishNativeExit());commits++
+        assertFalse(sheet.finishNativeExit())
+        animation.complete(Unit);first.join()
+        assertFalse(sheet.mounted);assertFalse(sheet.closing);assertEquals(1,commits)
+    }
 }
