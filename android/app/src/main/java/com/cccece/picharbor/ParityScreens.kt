@@ -97,7 +97,7 @@ fun ProductValue(label:String,value:String,localized:Boolean=true) {
             else SelectionContainer{LText(value,localize=false,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         }
     }
-    if(filename)FilenameSheet(value){filename=false}
+    FilenameSheet(value,visible=filename){filename=false}
 }
 
 @Composable
@@ -110,15 +110,18 @@ fun ProductAction(label:String,icon:ImageVector?=null,enabled:Boolean=true,destr
 }
 
 @Composable
-fun ProductBottomSheet(title:String,onDismiss:()->Unit,description:String="",content:@Composable ColumnScope.()->Unit) {
-    ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
-        Column(Modifier.fillMaxWidth().heightIn(max=640.dp).verticalScroll(rememberScrollState()).padding(start=24.dp,end=24.dp,bottom=32.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment=Alignment.CenterVertically) {
+fun ProductBottomSheet(title:String,onDismiss:()->Unit,description:String="",visible:Boolean=true,onHidden:()->Unit={},contentKey:Any?=title,content:@Composable ColumnScope.()->Unit) {
+    val height=minOf(640.dp,androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp*.9f)
+    NativeModalSheet(visible,onDismiss,onHidden,contentKey) {close->
+        Column(Modifier.fillMaxWidth().heightIn(max=height)) {
+            Row(Modifier.fillMaxWidth().padding(start=24.dp,end=16.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically) {
                 LText(title,style=MaterialTheme.typography.headlineSmall,modifier=Modifier.weight(1f))
-                IconButton(onClick=onDismiss){LIcon(Icons.Outlined.Close,"关闭")}
+                IconButton(onClick=close,enabled=!LocalSheetClosing.current){LIcon(Icons.Outlined.Close,"关闭")}
             }
-            content()
-            if(description.isNotEmpty())Helper(description)
+            Column(Modifier.weight(1f,fill=false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start=24.dp,end=24.dp,bottom=32.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                content()
+                if(description.isNotEmpty())Helper(description)
+            }
         }
     }
 }
@@ -128,25 +131,28 @@ fun ProductPicker(label:String,value:String,options:List<Pair<String,String>>,en
     val focus=LocalFocusManager.current
     var open by rememberSaveable(label){mutableStateOf(false)}
     SettingsRow(label,options.firstOrNull{it.first==value}?.second?:value,enabled=enabled&&options.isNotEmpty(),onClick={focus.clearFocus();open=true}) {LIcon(Icons.Outlined.ExpandMore,null)}
-    if(open)ProductBottomSheet(label,{open=false},description) {
+    ProductBottomSheet(label,{open=false},description,visible=open) {
+        val dismiss=sheetDismissAction()
         Column(Modifier.selectableGroup()) {
-            options.forEach{(id,text)->Choice(text,id==value,optionDescriptions[id].orEmpty(),enabled){open=false;onSelect(id)}}
+            options.forEach{(id,text)->Choice(text,id==value,optionDescriptions[id].orEmpty(),enabled){dismiss{open=false;onSelect(id)}}}
         }
     }
 }
 
 @Composable
 fun NativeChoiceRow(title:String,selected:Boolean,enabled:Boolean=true,localized:Boolean=true,onClick:()->Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).selectable(selected=selected,enabled=enabled,role=Role.RadioButton,onClick=onClick).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        RadioButton(selected,onClick=null,enabled=enabled)
+    val interactive=enabled&&!LocalSheetClosing.current
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).selectable(selected=selected,enabled=interactive,role=Role.RadioButton,onClick=onClick).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        RadioButton(selected,onClick=null,enabled=interactive)
         LText(title,modifier=Modifier.weight(1f),localize=localized)
     }
 }
 
 @Composable
 fun NativeCheckRow(title:String,checked:Boolean,enabled:Boolean=true,localized:Boolean=true,filename:Boolean=false,onChange:(Boolean)->Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(value=checked,enabled=enabled,role=Role.Checkbox,onValueChange=onChange).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        Checkbox(checked,onCheckedChange=null,enabled=enabled)
+    val interactive=enabled&&!LocalSheetClosing.current
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(value=checked,enabled=interactive,role=Role.Checkbox,onValueChange=onChange).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        Checkbox(checked,onCheckedChange=null,enabled=interactive)
         if(filename)FilenameText(title,Modifier.weight(1f)) else LText(title,modifier=Modifier.weight(1f),localize=localized)
     }
 }
@@ -177,7 +183,7 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
     Column(Modifier.fillMaxSize()) {
         PageTitle("照片",vm,root=true,navigation={
             Box {IconButton(onClick={mediaMenu=true}){LIcon(Icons.Outlined.FilterAlt,"筛选照片")}
-                if(mediaMenu)ProductBottomSheet("筛选照片",{mediaMenu=false}) {listOf("all" to "全部","photo" to "照片","video" to "视频","live" to "Live Photo").forEach{(id,label)->Choice(label,vm.type==id){vm.type=id;mediaMenu=false}}}
+                ProductBottomSheet("筛选照片",{mediaMenu=false},visible=mediaMenu) {val dismiss=sheetDismissAction();listOf("all" to "全部","photo" to "照片","video" to "视频","live" to "Live Photo").forEach{(id,label)->Choice(label,vm.type==id){dismiss{vm.type=id;mediaMenu=false}}}}
             }
         },action={
             TextButton(onClick=vm::toggleSelection){LText(if(vm.selectionMode)"完成" else "选择")}
@@ -193,9 +199,10 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
             Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
                     TextButton(onClick={albums=true}){LText(data.media.firstOrNull{it.folderKey==vm.libraryAlbum}?.folderName?:"最近项目",localize=vm.libraryAlbum.isEmpty());LIcon(Icons.Outlined.ExpandMore,null)}
-                    if(albums)ProductBottomSheet("相册",{albums=false}) {
-                        Choice("全部可访问项目",vm.libraryAlbum.isEmpty()){vm.libraryAlbum="";albums=false}
-                        data.media.distinctBy{it.folderKey}.forEach{album->NativeChoiceRow("${album.folderName} · ${folderCounts[album.folderKey]?:0}",vm.libraryAlbum==album.folderKey,localized=false){vm.libraryAlbum=album.folderKey;albums=false}}
+                    ProductBottomSheet("相册",{albums=false},visible=albums) {
+                        val dismiss=sheetDismissAction()
+                        Choice("全部可访问项目",vm.libraryAlbum.isEmpty()){dismiss{vm.libraryAlbum="";albums=false}}
+                        data.media.distinctBy{it.folderKey}.forEach{album->NativeChoiceRow("${album.folderName} · ${folderCounts[album.folderKey]?:0}",vm.libraryAlbum==album.folderKey,localized=false){dismiss{vm.libraryAlbum=album.folderKey;albums=false}}}
                     }
                 }
                 LText("${media.size} 项",style=MaterialTheme.typography.bodySmall)

@@ -92,6 +92,8 @@ struct ProxyProfileEditor: View {
     @State private var removal = false
     @State private var loaded = false
     @State private var savedID: String?
+    private enum InputField: Hashable { case name, address }
+    @FocusState private var inputField: InputField?
     private var currentID: String? { savedID ?? profileID }
     private var profile: ProxyProfile? { proxy.library.profiles.first { $0.id == currentID } }
     private var isSubscription: Bool { profile == nil || profile?.subscriptionURL != nil }
@@ -99,10 +101,10 @@ struct ProxyProfileEditor: View {
     var body: some View {
         Form {
             Section {
-                TextField(L10n.text("配置名称"), text: $name)
+                TextField(L10n.text("配置名称"), text: $name).focused($inputField, equals: .name)
                 if isSubscription {
                     TextField(L10n.text("HTTP 或 HTTPS 订阅链接"), text: $address, axis: .vertical)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().focused($inputField, equals: .address)
                     Text(L10n.text("链接仅保存在本机，不加入诊断报告。"))
                         .font(.footnote).foregroundStyle(.secondary)
                 }
@@ -114,6 +116,7 @@ struct ProxyProfileEditor: View {
                 }
                 if let profile {
                     Button(L10n.text("保存修改")) {
+                        inputField = nil
                         do {
                             try proxy.editProfile(profile.id, name: name, address: isSubscription ? address : nil)
                             status = L10n.text("修改已保存，节点内容需更新后生效。")
@@ -179,6 +182,8 @@ struct ProxyProfileEditor: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(L10n.text("完成")) { inputField = nil } } }
         .navigationTitle(L10n.text("配置详情"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -200,6 +205,7 @@ struct ProxyProfileEditor: View {
         }
     }
     private func update() {
+        inputField = nil
         working = true; status = L10n.text("正在读取订阅…")
         Task { @MainActor in
             defer { working = false }

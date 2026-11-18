@@ -238,7 +238,7 @@ struct JobRow: View {
                 ScrollView { Text(name).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding() }
                     .navigationTitle(L10n.text("完整文件名")).navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("完成")) { filename = false } } }
-            }.presentationDetents([.medium, .large])
+            }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
     }
 }

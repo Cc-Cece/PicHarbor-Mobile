@@ -86,8 +86,8 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData,sheetMode:Boolean=false) {
         }
     }
     }
-    if(filename)FilenameSheet(media.name){filename=false}
-    if(information)ProductBottomSheet("照片详情",{information=false}){MediaInformationContent(vm,data)}
+    FilenameSheet(media.name,visible=filename){filename=false}
+    ProductBottomSheet("照片详情",{information=false},visible=information){MediaInformationContent(vm,data)}
 
 }
 @Composable

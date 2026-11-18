@@ -139,15 +139,16 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
     }
     if(remove)AlertDialog(onDismissRequest={remove=false},title={LText("移除未完成任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={remove=false;vm.itemActions(removable,"remove")}){LText("停止并移除")}},dismissButton={TextButton(onClick={remove=false}){LText("取消")}})
     if(rowRemoval.isNotEmpty())AlertDialog(onDismissRequest={rowRemoval=emptyList()},title={LText("移除此任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},
-        confirmButton={TextButton(enabled=!vm.busy,onClick={val ids=rowRemoval.filter{it in pending};rowRemoval=emptyList();vm.itemActions(ids,"remove")},colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){LText("停止并移除")}},
+        confirmButton={TextButton(enabled=!vm.busy,onClick={val ids=rowRemoval.filter{it in removable};rowRemoval=emptyList();vm.itemActions(ids,"remove")},colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){LText("停止并移除")}},
         dismissButton={TextButton(onClick={rowRemoval=emptyList()}){LText("取消")}})
-    if(selecting)ProductBottomSheet(if(archived)"选择取消归档" else "选择归档",{selecting=false}) {
+    ProductBottomSheet(if(archived)"选择取消归档" else "选择归档",{selecting=false},visible=selecting) {
+        val dismiss=sheetDismissAction()
         LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp)) {
             items(archivable,key={it.id}){item->
                 NativeCheckRow(item.name,item.id in selected,localized=false,filename=true){selected=if(it)selected+item.id else selected-item.id}
             }
         }
-        Button(onClick={vm.archiveSelected(archivable.filter{it.id in selected}.map{it.id},archived);selecting=false},enabled=!vm.busy&&archivable.any{it.id in selected},modifier=Modifier.fillMaxWidth()){LText("完成")}
+        Button(onClick={dismiss{vm.archiveSelected(archivable.filter{it.id in selected}.map{it.id},archived);selecting=false}},enabled=!vm.busy&&archivable.any{it.id in selected},modifier=Modifier.fillMaxWidth()){LText("完成")}
     }
 }
 

@@ -252,7 +252,7 @@ struct AssetDetailView: View {
             }
         }
         .sheet(isPresented: $information) { NavigationStack { AssetInformationView(asset: asset, resources: resources, sizes: sizes) }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
-        .sheet(isPresented: $filename) { NavigationStack { ScrollView { Text(name).textSelection(.enabled).padding() }.navigationTitle(L10n.text("完整文件名")).toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("完成")) { filename = false } } } }.presentationDetents([.medium]) }
+        .sheet(isPresented: $filename) { NavigationStack { ScrollView { Text(name).textSelection(.enabled).padding() }.navigationTitle(L10n.text("完整文件名")).toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("完成")) { filename = false } } } }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(isPresented: $shareReady, onDismiss: cleanShare) { AssetShareSheet(files: shareFiles) }
         .alert(L10n.text("分享 Live Photo"), isPresented: $shareNotice) {
             Button(L10n.text("继续分享")) { liveShareNoticeAccepted = true; prepareShare() }

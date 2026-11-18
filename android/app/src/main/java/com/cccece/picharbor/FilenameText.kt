@@ -50,10 +50,12 @@ fun FilenameText(name:String,modifier:Modifier=Modifier,style:TextStyle=LocalTex
 }
 
 @Composable
-fun FilenameSheet(name:String,onDismiss:()->Unit) {
+fun FilenameSheet(name:String,visible:Boolean=true,onDismiss:()->Unit) {
     val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
-    ProductBottomSheet("完整文件名",onDismiss) {
+    var copied by remember(name){mutableStateOf(false)}
+    LaunchedEffect(visible){if(visible)copied=false}
+    ProductBottomSheet("完整文件名",onDismiss,visible=visible) {
         androidx.compose.foundation.text.selection.SelectionContainer{LText(name,localize=false)}
-        TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(name))}){LText("复制文件名")}
+        TextButton(enabled=!LocalSheetClosing.current,onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(name));copied=true}){LText(if(copied)"已复制" else "复制文件名")}
     }
 }

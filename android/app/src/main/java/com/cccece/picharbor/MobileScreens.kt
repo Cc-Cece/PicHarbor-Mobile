@@ -91,11 +91,12 @@ private fun MaterialPalettePicker(value:String,vm:HarborViewModel) {
         Triple("blue","晴空蓝",Color(0xFF365E9D)),Triple("rose","玫瑰红",Color(0xFF984061)),Triple("teal","青绿色",Color(0xFF006B5E)),Triple("amber","琥珀色",Color(0xFF795900)))
     var open by rememberSaveable{mutableStateOf(false)}
     SettingsRow("主题色",options.firstOrNull{it.first==value}?.second.orEmpty(),onClick={open=true}){LIcon(Icons.Outlined.ExpandMore,null)}
-    if(open)ProductBottomSheet("主题色",{open=false}) {
+    ProductBottomSheet("主题色",{open=false},visible=open) {
+        val dismiss=sheetDismissAction();val closing=LocalSheetClosing.current
         options.forEach{(key,label,color)->
-            Row(Modifier.fillMaxWidth().heightIn(min=56.dp).selectable(value==key,role=Role.RadioButton,onClick={open=false;vm.setString("palette",key)}).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min=56.dp).selectable(value==key,enabled=!closing,role=Role.RadioButton,onClick={dismiss{open=false;vm.setString("palette",key)}}).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.size(26.dp).background(color,CircleShape))
-                LText(label,Modifier.weight(1f));RadioButton(value==key,onClick=null)
+                LText(label,Modifier.weight(1f));RadioButton(value==key,onClick=null,enabled=!closing)
             }
         }
     }

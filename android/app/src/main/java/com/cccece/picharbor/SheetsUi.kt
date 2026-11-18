@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -22,8 +23,9 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun Choice(label:String,checked:Boolean,description:String="",enabled:Boolean=true,onClick:()->Unit) {
-    Row(Modifier.fillMaxWidth().selectable(selected=checked,enabled=enabled,role=Role.RadioButton,onClick=onClick).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
-        RadioButton(checked,onClick=null,enabled=enabled)
+    val interactive=enabled&&!LocalSheetClosing.current
+    Row(Modifier.fillMaxWidth().selectable(selected=checked,enabled=interactive,role=Role.RadioButton,onClick=onClick).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
+        RadioButton(checked,onClick=null,enabled=interactive)
         Column(Modifier.weight(1f)){LText(label,style=MaterialTheme.typography.bodyLarge);if(description.isNotEmpty())LText(description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }
@@ -31,13 +33,22 @@ fun Choice(label:String,checked:Boolean,description:String="",enabled:Boolean=tr
 fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTree:()->Unit) {
     val context=LocalView.current.context
     val accounts by vm.accounts.collectAsState()
-    val mode=vm.sheet
+    val requestedMode=vm.sheet
+    if(requestedMode=="account"||requestedMode=="login") {
+        LaunchedEffect(requestedMode){vm.sheet="";vm.navigate(if(requestedMode=="login")"connection" else "accounts")}
+        return
+    }
+    var retainedMode by remember{mutableStateOf("")}
+    SideEffect{if(requestedMode.isNotEmpty())retainedMode=requestedMode}
+    val mode=requestedMode.ifEmpty{retainedMode}
     if(mode.isEmpty())return
+    val visible=requestedMode.isNotEmpty()
+    val forget:()->Unit={if(vm.sheet.isEmpty())retainedMode=""}
     if(mode=="proxy-licenses") {
         val notice=remember{listOf("NOTICE","LICENSE","THIRD_PARTY_LICENSES.md").joinToString("\n\n"){name->
             context.assets.open("proxy-notices/$name").bufferedReader().use{it.readText()}
         }}
-        ProductBottomSheet("代理组件开源许可",{vm.sheet=""}) {
+        ProductBottomSheet("代理组件开源许可",{vm.sheet=""},visible=visible,onHidden=forget) {
             androidx.compose.foundation.text.selection.SelectionContainer {
                 Text(notice,style=MaterialTheme.typography.bodySmall)
             }
@@ -45,7 +56,7 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
         return
     }
     if(mode=="photo-detail") {
-        ModalBottomSheet(onDismissRequest={vm.sheet=""},sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+        NativeModalSheet(visible,{vm.sheet=""},forget,mode) { _ ->
             Box(Modifier.fillMaxWidth().fillMaxHeight(.94f)){DetailScreen(vm,data,sheetMode=true)}
         }
         return
@@ -57,14 +68,15 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
     var proxyPort by remember(mode){mutableStateOf(if(data.settings.proxyPort>0)data.settings.proxyPort.toString() else "")}
     var proxyUser by remember(mode){mutableStateOf(data.settings.proxyUser)}
     var proxyPassword by remember(mode){mutableStateOf("")}
-    var dateDialog by remember(mode){mutableStateOf(false)}
+    var dateDialog by rememberSaveable(mode){mutableStateOf(false)}
+    var dateVisible by remember{mutableStateOf(false)}
     val dates=rememberDateRangePickerState()
-    if(dateDialog)DatePickerDialog(onDismissRequest={dateDialog=false},confirmButton={TextButton(onClick={
+    if(dateVisible&&visible)DatePickerDialog(onDismissRequest={dateVisible=false;dateDialog=false},confirmButton={TextButton(onClick={
         fun localDate(value:Long)=Instant.ofEpochMilli(value).atZone(ZoneOffset.UTC).toLocalDate()
         vm.fromDate=dates.selectedStartDateMillis?.let{localDate(it).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()}?:0
         vm.toDate=dates.selectedEndDateMillis?.let{localDate(it).plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()-1}?:Long.MAX_VALUE
-        dateDialog=false;vm.sheet=""
-    }){LText("应用")}},dismissButton={TextButton(onClick={dateDialog=false}){LText("取消")}}){CompactDateRangePicker(dates,modifier=Modifier.heightIn(max=480.dp))}
+        dateVisible=false;dateDialog=false;vm.sheet=""
+    }){LText("应用")}},dismissButton={TextButton(onClick={dateVisible=false;dateDialog=false}){LText("取消")}}){CompactDateRangePicker(dates,modifier=Modifier.heightIn(max=480.dp))}
     val title=when {
         mode=="account"||mode=="login"->"备份账号"
         mode.startsWith("remove-account:")->"移除账号？"
@@ -83,19 +95,15 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
         mode=="background"->"让备份在后台继续"
         mode=="help"->"备份遇到问题？"
         mode=="about"->"关于 PicHarbor"
+        mode=="licenses"->"开源许可"
         mode=="concurrency"->"同时上传数量"
         mode=="timeout"->"连接超时"
         mode.startsWith("job:")->"任务详情"
         mode.startsWith("end:")->"结束当前任务？"
         else->"PicHarbor"
     }
-    if(mode=="account"||mode=="login") {
-        LaunchedEffect(mode){vm.sheet="";vm.navigate(if(mode=="login")"connection" else "accounts")}
-        return
-    }
-    ModalBottomSheet(onDismissRequest={vm.sheet=""},sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
-        Column(Modifier.fillMaxWidth().heightIn(max=640.dp).verticalScroll(rememberScrollState()).padding(start=24.dp,end=24.dp,bottom=32.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment=Alignment.CenterVertically){LText(title,style=MaterialTheme.typography.headlineSmall,modifier=Modifier.weight(1f));IconButton(onClick={vm.sheet=""}){LIcon(Icons.Outlined.Close,"关闭")}}
+    ProductBottomSheet(title,{vm.sheet=""},visible=visible&&!dateDialog,onHidden={if(vm.sheet==mode&&dateDialog)dateVisible=true else forget()},contentKey=mode) {
+            val dismiss=sheetDismissAction()
             when {
                 mode=="account"||mode=="login"->{
                     LText("选择备份使用的账号",style=MaterialTheme.typography.bodyMedium)
@@ -122,7 +130,7 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                     val account=mode.substringAfter(':')
                     LText("从此设备移除 $account？将清除该账号的登录凭据，保留云端照片和本地任务记录。")
                     Button(onClick={vm.removeAccount(account)},enabled=!vm.busy,modifier=Modifier.fillMaxWidth()){LText("移除账号")}
-                    TextButton(onClick={vm.sheet="account"}){LText("保留")}
+                    TextButton(onClick={dismiss{vm.sheet="";vm.navigate("accounts")}}){LText("保留")}
                 }
                 mode=="appearance"->{
                     LText("主题",style=MaterialTheme.typography.titleSmall)
@@ -187,19 +195,19 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                 }
                 mode.startsWith("mobile-")->{
                     LText("当前不是 Wi-Fi 连接。本次备份可能消耗移动流量，长期网络设置不会改变。")
-                    Button(onClick={val ids=vm.pendingManualIds;vm.sheet="";vm.start(ids,true)},enabled=!vm.busy,modifier=Modifier.fillMaxWidth()){LText("本次使用移动流量")}
+                    Button(onClick={val ids=vm.pendingManualIds;dismiss{vm.sheet="";vm.start(ids,true)}},enabled=!vm.busy,modifier=Modifier.fillMaxWidth()){LText("本次使用移动流量")}
                     TextButton(onClick={vm.sheet=""}){LText("等待 Wi-Fi")}
                 }
                 mode=="sd"->{
                     LText("选择想备份的文件夹，只授权你需要的范围。")
                     listOf("打开系统文件夹选择器","选择手机或 SD 卡上的照片文件夹","点击“使用此文件夹”并允许访问").forEachIndexed{i,text->SettingsRow("${i+1}  $text",onClick={}){}}
-                    Button(onClick={onPickTree();vm.sheet=""},modifier=Modifier.fillMaxWidth()){LText("选择文件夹")}
+                    Button(onClick={dismiss{vm.sheet="";onPickTree()}},modifier=Modifier.fillMaxWidth()){LText("选择文件夹")}
                 }
                 mode=="background"->{
                     Helper("允许通知和后台运行，有助于备份在锁屏后继续。不同手机的自启动设置名称可能不同。")
-                    OutlinedButton(onClick={if(!context.openProductIntent(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName))){vm.sheet="";vm.say("暂时无法打开此页面")}},modifier=Modifier.fillMaxWidth()){LText("通知设置")}
-                    Button(onClick={runCatching{if(!context.openProductIntent(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}")))){vm.sheet="";vm.say("暂时无法打开此页面")}}} ,modifier=Modifier.fillMaxWidth()){LText("打开应用设置")}
-                    OutlinedButton(onClick={runCatching{if(!context.openProductIntent(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))){vm.sheet="";vm.say("暂时无法打开此页面")}}},modifier=Modifier.fillMaxWidth()){LText("查看电池优化设置")}
+                    OutlinedButton(onClick={dismiss{vm.sheet="";if(!context.openProductIntent(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName)))vm.say("暂时无法打开此页面")}},modifier=Modifier.fillMaxWidth()){LText("通知设置")}
+                    Button(onClick={dismiss{vm.sheet="";if(!context.openProductIntent(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}"))))vm.say("暂时无法打开此页面")}},modifier=Modifier.fillMaxWidth()){LText("打开应用设置")}
+                    OutlinedButton(onClick={dismiss{vm.sheet="";if(!context.openProductIntent(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)))vm.say("暂时无法打开此页面")}},modifier=Modifier.fillMaxWidth()){LText("查看电池优化设置")}
                 }
                 mode=="concurrency"->{(1..3).forEach{n->Choice(if(n==2)"2 个（默认）" else "$n 个",data.settings.concurrency==n){vm.setInteger("concurrency",n)}}}
                 mode=="timeout"->{listOf(30,60,120).forEach{n->Choice("$n 秒",data.settings.timeout==n){vm.setInteger("timeout",n)}}}
@@ -211,7 +219,7 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                     SettingsRow("检查文件访问权限","只会显示已授权的内容",Icons.Outlined.PhotoLibrary,onClick={vm.sheet="background"})
                     SettingsRow("检查网络","确认网络与移动流量设置",Icons.Outlined.Wifi,onClick={vm.navigate("network")})
                     SettingsRow("后台备份中断","检查通知、省电和自启动设置",Icons.Outlined.BatteryChargingFull,onClick={vm.sheet="background"})
-                    SettingsRow("账号连接异常","重新确认当前账号",Icons.Outlined.PersonOutline,onClick={vm.sheet="account"})
+                    SettingsRow("账号连接异常","重新确认当前账号",Icons.Outlined.PersonOutline,onClick={dismiss{vm.sheet="";vm.navigate("accounts")}})
                 }
                 mode=="about"->{
                     EmptyState("PicHarbor","为珍贵的日常，留一份安心。",Icons.Outlined.CloudDone)
@@ -226,6 +234,5 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                     LText(notice,style=MaterialTheme.typography.bodySmall);LText(license,style=MaterialTheme.typography.bodySmall)
                 }
             }
-        }
     }
 }

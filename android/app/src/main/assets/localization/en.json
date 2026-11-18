@@ -1461,5 +1461,6 @@
   "原始画质（不占用配额）": "Original quality (no quota)",
   "节省空间（不占用配额）": "Storage saver (no quota)",
   "原始画质（占用配额）": "Original quality (uses quota)",
-  "元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。": "Metadata is uploaded with each file; cloud processing may change some details. Storage saver is processed on your device or by Google Photos, without a third-party image-processing service. This selects the upload method only; actual storage usage is shown in Google Photos. Try a small backup before uploading a large library."
+  "元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。": "Metadata is uploaded with each file; cloud processing may change some details. Storage saver is processed on your device or by Google Photos, without a third-party image-processing service. This selects the upload method only; actual storage usage is shown in Google Photos. Try a small backup before uploading a large library.",
+  "已复制": "Copied"
 }

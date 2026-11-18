@@ -173,7 +173,7 @@ struct NetworkPreferencesView: View {
                 LabeledContent(L10n.text("暂存资源"), value: ByteCountFormatter.string(fromByteCount: model.stagedBytes, countStyle: .file))
             }
         }.navigationTitle(L10n.text("网络与后台")).navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $scope) { NavigationStack { BackupScopeView() } }
+        .sheet(isPresented: $scope) { NavigationStack { BackupScopeView().toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("关闭")) { scope = false } } } }.presentationDragIndicator(.visible) }
         .onChange(of: model.settings) { _, _ in Task { await model.saveSettings() } }
     }
 }
@@ -207,6 +207,7 @@ struct ConnectionView: View {
     @State private var credential = ""
     @State private var connecting = false
     @State private var pendingCredential: String?
+    @FocusState private var credentialFocused: Bool
     @State private var loginError = ""
     private var unavailable: Bool { connecting || model.engine.busy || model.switching || !model.initialized }
     var body: some View {
@@ -222,6 +223,8 @@ struct ConnectionView: View {
             }
             Section {
                 SecureField(L10n.text("粘贴登录凭据"), text: $credential).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .focused($credentialFocused).submitLabel(.go)
+                    .onSubmit { if !credential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !unavailable && model.engine.ready { login(credential) } }
                 Button { login(credential) } label: { if connecting { ProgressView(L10n.text("正在连接")) } else { Text(L10n.text("导入并连接")) } }.disabled(credential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || unavailable || !model.engine.ready)
             } header: { Text(L10n.text("已有 gpmc 凭据")) } footer: { Text(L10n.text("凭据仅保存在本机钥匙串，不导出到诊断报告。应用内网页登录受 Google 规则影响时，可导入已有凭据。")) }
             Section {
@@ -231,7 +234,7 @@ struct ConnectionView: View {
                 Text(L10n.message(model.engine.message)).font(.footnote).foregroundStyle(.secondary)
                 if !model.initialized && !model.engine.busy { Button(L10n.text("重新检查运行环境")) { Task { await model.boot() } } }
             }
-        }.navigationTitle(L10n.text("欢迎使用 PicHarbor")).navigationBarTitleDisplayMode(.inline)
+        }.scrollDismissesKeyboard(.interactively).navigationTitle(L10n.text("欢迎使用 PicHarbor")).navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("稍后")) { dismiss() }.disabled(connecting) } }
         .interactiveDismissDisabled(connecting)
         .sheet(isPresented: $web, onDismiss: {
@@ -240,6 +243,7 @@ struct ConnectionView: View {
         }) { GoogleLoginView(token: { pendingCredential = $0 }) }
     }
     private func login(_ value: String) {
+        credentialFocused = false
         connecting = true
         loginError = ""
         Task {

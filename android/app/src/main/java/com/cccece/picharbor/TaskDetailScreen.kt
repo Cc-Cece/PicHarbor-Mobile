@@ -64,10 +64,10 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
             ProductSection {ProductAction("高级信息",Icons.Outlined.Info){advanced=true}}
         }
     }
-    if(advanced&&item!=null)ProductBottomSheet("高级信息",{advanced=false}) {
+    if(item!=null)ProductBottomSheet("高级信息",{advanced=false},visible=advanced) {
         ProductValue("任务标识",item.id,false);ProductValue("文件大小",formatSize(item.bytes));ProductValue("尝试次数",item.attempt.toString())
         if(job!=null){ProductValue("来源",if(job.automatic)"自动" else "手动");ProductValue("上传画质",qualityName(job.quality));ProductValue("Live Photo",livePhotoLabel(job.liveStrategy))}
     }
-    if(filename&&item!=null)FilenameSheet(item.name){filename=false}
+    if(item!=null)FilenameSheet(item.name,visible=filename){filename=false}
     if((remove||cancel)&&item!=null)AlertDialog(onDismissRequest={remove=false;cancel=false},title={LText(if(remove)"移除此任务？" else "取消任务？")},text={LText("停止处理并保留本机及云端照片。同一版本仍可手动重新备份。")},confirmButton={TextButton(onClick={vm.itemAction(item.id,if(remove)"remove" else "cancel");remove=false;cancel=false},colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){LText(if(remove)"停止并移除" else "取消任务")}},dismissButton={TextButton(onClick={remove=false;cancel=false}){LText("取消")}})
 }

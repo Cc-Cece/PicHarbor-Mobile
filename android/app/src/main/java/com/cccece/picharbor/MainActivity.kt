@@ -75,8 +75,8 @@ class MainActivity:ComponentActivity() {
         setContent {
             val settings by model.settings.collectAsState()
             MobileLocale(settings.language) {
-            var logDialog by remember { mutableStateOf(false) }
-            if(logDialog)PicHarborTheme(settings){DiagnosticExportDialog(onDismiss={logDialog=false},onExport={range->
+            var logDialog by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+            PicHarborTheme(settings){DiagnosticExportDialog(visible=logDialog,onDismiss={logDialog=false},onExport={range->
                 reportRange=range;logDialog=false
                 report.launch("PicHarbor-logs-${java.time.LocalDate.now()}.zip")
             })}
