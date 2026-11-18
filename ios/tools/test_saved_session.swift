@@ -12,7 +12,8 @@ struct SavedSessionTests {
         }
         func reset() {
             for service in ["PicHarbor.gpmc", "PicHarbor.session"] {
-                SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary)
+                let status = SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary)
+                precondition(status == errSecSuccess || status == errSecItemNotFound, "Test Keychain reset failed")
             }
             UserDefaults.standard.removeObject(forKey: "activeAccount")
         }
@@ -60,6 +61,10 @@ struct SavedSessionTests {
         precondition(ambiguous == nil, "Missing selection must not guess between accounts")
         reset()
         try KeychainStore.save("legacy-secret")
+        let explicitLegacy = try KeychainStore.load(account: "credential")
+        precondition(explicitLegacy == "legacy-secret", "Legacy slot write/read failed")
+        let legacyAccounts = try KeychainStore.accounts()
+        precondition(legacyAccounts.isEmpty, "Legacy slot must not appear as a named account")
         let legacy = try KeychainStore.load()
         precondition(legacy == "legacy-secret", "Original credential slot still migrates")
         print("PASS: 23 saved-session selection, recovery, logout and Keychain checks")
