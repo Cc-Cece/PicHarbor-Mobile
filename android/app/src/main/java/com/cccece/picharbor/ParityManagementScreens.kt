@@ -139,16 +139,14 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
     if(rowRemoval.isNotEmpty())AlertDialog(onDismissRequest={rowRemoval=emptyList()},title={LText("移除此任务？")},text={LText("停止并从活动中移除，保留本机及云端照片。同一版本仍可手动重新备份。")},
         confirmButton={TextButton(enabled=!vm.busy,onClick={val ids=rowRemoval.filter{it in pending};rowRemoval=emptyList();vm.itemActions(ids,"remove")},colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.error)){LText("停止并移除")}},
         dismissButton={TextButton(onClick={rowRemoval=emptyList()}){LText("取消")}})
-    if(selecting)AlertDialog(
-        onDismissRequest={selecting=false},title={LText(if(archived)"选择取消归档" else "选择归档")},
-        text={LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp)) {
+    if(selecting)ProductBottomSheet(if(archived)"选择取消归档" else "选择归档",{selecting=false}) {
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp)) {
             items(archivable,key={it.id}){item->
                 NativeCheckRow(item.name,item.id in selected,localized=false){selected=if(it)selected+item.id else selected-item.id}
             }
-        }},
-        confirmButton={TextButton(onClick={vm.archiveSelected(archivable.filter{it.id in selected}.map{it.id},archived);selecting=false},enabled=!vm.busy&&archivable.any{it.id in selected}){LText("完成")}},
-        dismissButton={TextButton(onClick={selecting=false}){LText("取消")}}
-    )
+        }
+        Button(onClick={vm.archiveSelected(archivable.filter{it.id in selected}.map{it.id},archived);selecting=false},enabled=!vm.busy&&archivable.any{it.id in selected},modifier=Modifier.fillMaxWidth()){LText("完成")}
+    }
 }
 
 @Composable

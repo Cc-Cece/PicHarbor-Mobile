@@ -101,6 +101,7 @@ struct BackupDashboard: View {
     @ObservedObject private var language = LanguagePreferences.shared
     @EnvironmentObject private var model: HarborModel
     @State private var confirm = false
+    @State private var automaticSettings = false
     var body: some View {
         List {
             Section {
@@ -109,7 +110,9 @@ struct BackupDashboard: View {
                         Image(systemName: model.activeCount > 0 ? "icloud.and.arrow.up.fill" : "checkmark.icloud.fill")
                             .font(.system(size: 44)).foregroundStyle(.blue).accessibilityHidden(true)
                         Spacer(minLength: 12)
-                        AutomaticBackupIndicator(enabled: model.settings.automatic)
+                        Button { automaticSettings = true } label: {
+                            AutomaticBackupIndicator(enabled: model.settings.automatic)
+                        }.buttonStyle(.plain)
                     }
                     Text(model.activeCount > 0 ? L10n.text("备份进行中") : L10n.text("让回忆安心留存")).font(.title2.bold())
                     Text(model.account.isEmpty ? L10n.text("连接 Google 账号，开始备份你的照片与视频。") : model.account).font(.subheadline).foregroundStyle(.secondary)
@@ -145,6 +148,7 @@ struct BackupDashboard: View {
             if !model.engine.ready { Section { Text(L10n.message(model.engine.message)).foregroundStyle(.secondary) } }
         }
         .navigationTitle(L10n.text("备份"))
+        .navigationDestination(isPresented: $automaticSettings) { BackupScopeView(focusAutomatic: true) }
         .confirmationDialog(L10n.text("确认备份范围与设置"), isPresented: $confirm, titleVisibility: .visible) {
             Button(L10n.text("开始备份")) { Task { await model.enqueue(model.library.scope(model.settings)) } }
             Button(L10n.text("取消"), role: .cancel) {}

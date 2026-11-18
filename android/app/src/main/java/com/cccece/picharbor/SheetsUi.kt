@@ -121,6 +121,7 @@ fun HarborSheets(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit,onPickTre
                     Helper("存储空间是否计入配额，以 Google 相册实际处理结果为准。")
                 }
                 mode=="edit-policy"->{
+                    LText("同时保留修改前后的内容；内容相同只备份一份。不保留撤销编辑的记录。",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Choice("原始与编辑后均保留",data.settings.editPolicy=="both"){vm.setString("editPolicy","both")}
                     Choice("仅原始版本",data.settings.editPolicy=="original","当前图库未提供可验证的编辑前版本",enabled=false){}
                     Choice("仅编辑后版本",data.settings.editPolicy=="current"){vm.setString("editPolicy","current")}

@@ -16,9 +16,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 @Composable
-fun AutomaticBackupIndicator(enabled:Boolean) {
-    Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(Modifier.semantics(mergeDescendants=true){}.padding(horizontal=10.dp,vertical=7.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+fun AutomaticBackupIndicator(enabled:Boolean,onClick:()->Unit) {
+    Surface(onClick=onClick,shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.heightIn(min=48.dp).semantics(mergeDescendants=true){}.padding(horizontal=10.dp,vertical=7.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
             LIcon(if(enabled)Icons.Outlined.CheckCircle else Icons.Outlined.PauseCircle,null,Modifier.size(18.dp),if(enabled)Color(0xFF2E9D5C) else MaterialTheme.colorScheme.onSurfaceVariant)
             LText("自动备份",style=MaterialTheme.typography.labelMedium)
             LText(if(enabled)"已开启" else "未开启",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)

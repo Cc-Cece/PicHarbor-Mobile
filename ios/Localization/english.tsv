@@ -884,3 +884,6 @@ HTTP 或 HTTPS 订阅链接|HTTP or HTTPS subscription URL
 导出范围|Export range
 日志保留|Log retention
 14 天 / 64 MiB|14 days / 64 MiB
+开启自动备份|Enable automatic backup
+菜单名称和位置可能因版本或语言有所不同。|Menu names and locations may vary by version or language.
+请在 Google 相册中登录与 PicHarbor 备份时相同的 Google 账号。|Sign in to Google Photos with the same Google Account you use for backups in PicHarbor.

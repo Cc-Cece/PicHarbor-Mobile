@@ -100,6 +100,7 @@ struct AdvancedBackupChecksView: View {
 }
 
 struct BackupScopeView: View {
+    var focusAutomatic = false
     @ObservedObject private var language = LanguagePreferences.shared
     @EnvironmentObject private var model: HarborModel
     @Environment(\.dismiss) private var dismiss
@@ -107,6 +108,7 @@ struct BackupScopeView: View {
     @State private var all = true
     @State private var automatic = true
     var body: some View {
+        ScrollViewReader { proxy in
         Form {
             Section {
                 Button { selected = []; all = true } label: { HStack { Text(L10n.text("全部可访问照片与视频")); Spacer(); if all { Image(systemName: "checkmark") } } }
@@ -123,7 +125,7 @@ struct BackupScopeView: View {
             }
             Section {
                 LabeledContent(L10n.text("将备份"), value: L10n.text("{0} 项", [String(describing: scopeCount)]))
-                Toggle(L10n.text("确认后开启自动备份"), isOn: $automatic)
+                Toggle(L10n.text("开启自动备份"), isOn: $automatic).id("automatic-backup")
                 LabeledContent(L10n.text("上传画质"), value: model.settings.quality.title)
                 LabeledContent("Live Photo", value: model.settings.live.title)
                 LabeledContent(L10n.text("网络"), value: model.settings.wifiOnly ? L10n.text("仅 Wi-Fi") : L10n.text("Wi-Fi 与蜂窝"))
@@ -135,7 +137,12 @@ struct BackupScopeView: View {
                 if model.account.isEmpty { NavigationLink(L10n.text("请先连接 Google 账号")) { AccountListView() } }
             } footer: { Text(L10n.text("自动备份会识别范围内新增和修改内容。系统后台安排不保证即时，打开应用可继续。")) }
         }.navigationTitle(L10n.text("备份范围")).navigationBarTitleDisplayMode(.inline)
-        .onAppear { selected = Set(model.settings.selectedAlbums); all = selected.isEmpty; automatic = model.settings.scopeConfirmed == true ? model.settings.automatic : true }
+        .onAppear {
+            selected = Set(model.settings.selectedAlbums); all = selected.isEmpty
+            automatic = focusAutomatic || model.settings.scopeConfirmed == true ? model.settings.automatic : true
+            if focusAutomatic { DispatchQueue.main.async { withAnimation { proxy.scrollTo("automatic-backup", anchor: .center) } } }
+        }
+        }
     }
     private var scopeCount: Int {
         if all { return model.library.assets.count }

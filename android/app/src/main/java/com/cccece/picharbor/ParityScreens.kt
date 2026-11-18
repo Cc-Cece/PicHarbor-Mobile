@@ -7,6 +7,9 @@ import android.provider.Settings
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
@@ -104,20 +107,29 @@ fun ProductAction(label:String,icon:ImageVector?=null,enabled:Boolean=true,destr
 }
 
 @Composable
-fun ProductPicker(label:String,value:String,options:List<Pair<String,String>>,enabled:Boolean=true,onSelect:(String)->Unit) {
-    val focus=LocalFocusManager.current
-    var open by remember{mutableStateOf(false)}
-    SettingsRow(label,options.firstOrNull{it.first==value}?.second?:value,enabled=enabled&&options.isNotEmpty(),onClick={focus.clearFocus();open=true}) {LIcon(Icons.Outlined.ExpandMore,null)}
-    if(open)AlertDialog(onDismissRequest={open=false},title={LText(label)},text={
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max=420.dp).selectableGroup()) {
-            items(options,key={it.first}){(id,text)->
-                Row(Modifier.fillMaxWidth().heightIn(min=48.dp).selectable(selected=id==value,enabled=enabled,role=Role.RadioButton,onClick={open=false;onSelect(id)}).padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    RadioButton(selected=id==value,onClick=null,enabled=enabled)
-                    LText(text,modifier=Modifier.weight(1f))
-                }
+fun ProductBottomSheet(title:String,onDismiss:()->Unit,description:String="",content:@Composable ColumnScope.()->Unit) {
+    ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+        Column(Modifier.fillMaxWidth().heightIn(max=640.dp).verticalScroll(rememberScrollState()).padding(start=24.dp,end=24.dp,bottom=32.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                LText(title,style=MaterialTheme.typography.headlineSmall,modifier=Modifier.weight(1f))
+                IconButton(onClick=onDismiss){LIcon(Icons.Outlined.Close,"关闭")}
             }
+            content()
+            if(description.isNotEmpty())LText(description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    },confirmButton={},dismissButton={TextButton(onClick={open=false}){LText("取消")}})
+    }
+}
+
+@Composable
+fun ProductPicker(label:String,value:String,options:List<Pair<String,String>>,enabled:Boolean=true,description:String="",optionDescriptions:Map<String,String> = emptyMap(),onSelect:(String)->Unit) {
+    val focus=LocalFocusManager.current
+    var open by rememberSaveable(label){mutableStateOf(false)}
+    SettingsRow(label,options.firstOrNull{it.first==value}?.second?:value,enabled=enabled&&options.isNotEmpty(),onClick={focus.clearFocus();open=true}) {LIcon(Icons.Outlined.ExpandMore,null)}
+    if(open)ProductBottomSheet(label,{open=false},description) {
+        Column(Modifier.selectableGroup()) {
+            options.forEach{(id,text)->Choice(text,id==value,optionDescriptions[id].orEmpty(),enabled){open=false;onSelect(id)}}
+        }
+    }
 }
 
 @Composable
@@ -162,7 +174,7 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
             Box {IconButton(onClick={mediaMenu=true}){LIcon(Icons.Outlined.FilterAlt,"筛选照片")}
-                DropdownMenu(mediaMenu,{mediaMenu=false}) {listOf("all" to "全部","photo" to "照片","video" to "视频","live" to "Live Photo").forEach{(id,label)->DropdownMenuItem(text={LText(label)},onClick={vm.type=id;mediaMenu=false})}}
+                if(mediaMenu)ProductBottomSheet("筛选照片",{mediaMenu=false}) {listOf("all" to "全部","photo" to "照片","video" to "视频","live" to "Live Photo").forEach{(id,label)->Choice(label,vm.type==id){vm.type=id;mediaMenu=false}}}
             }
             Spacer(Modifier.weight(1f))
             TextButton(onClick=vm::toggleSelection){LText(if(vm.selectionMode)"完成" else "选择")}
@@ -179,9 +191,9 @@ fun PhotosScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,onP
             Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
                     TextButton(onClick={albums=true}){LText(data.media.firstOrNull{it.folderKey==vm.libraryAlbum}?.folderName?:"最近项目",localize=vm.libraryAlbum.isEmpty());LIcon(Icons.Outlined.ExpandMore,null)}
-                    DropdownMenu(albums,{albums=false}) {
-                        DropdownMenuItem(text={LText("全部可访问项目")},onClick={vm.libraryAlbum="";albums=false})
-                        data.media.distinctBy{it.folderKey}.forEach{album->DropdownMenuItem(text={LText("${album.folderName} · ${folderCounts[album.folderKey]?:0}",localize=false)},onClick={vm.libraryAlbum=album.folderKey;albums=false})}
+                    if(albums)ProductBottomSheet("相册",{albums=false}) {
+                        Choice("全部可访问项目",vm.libraryAlbum.isEmpty()){vm.libraryAlbum="";albums=false}
+                        data.media.distinctBy{it.folderKey}.forEach{album->NativeChoiceRow("${album.folderName} · ${folderCounts[album.folderKey]?:0}",vm.libraryAlbum==album.folderKey,localized=false){vm.libraryAlbum=album.folderKey;albums=false}}
                     }
                 }
                 LText("${media.size} 项",style=MaterialTheme.typography.bodySmall)
@@ -234,7 +246,7 @@ fun BackupScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
             Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     LIcon(if(active>0)Icons.Outlined.CloudUpload else Icons.Outlined.CloudDone,null,Modifier.size(44.dp),MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.weight(1f));AutomaticBackupIndicator(data.settings.auto)
+                    Spacer(Modifier.weight(1f));AutomaticBackupIndicator(data.settings.auto,onClick=vm::showAutomaticBackup)
                 }
                 LText(if(active>0)"备份进行中" else "让回忆安心留存",style=MaterialTheme.typography.titleLarge)
                 LText(data.settings.account.ifEmpty{"连接 Google 账号，开始备份你的照片与视频。"},localize=data.settings.account.isEmpty())
@@ -268,12 +280,11 @@ fun BackupScreen(vm:HarborViewModel,data:HarborUiData,onLogin:()->Unit) {
 fun SettingsScreen(vm:HarborViewModel,data:HarborUiData) {
     val s=data.settings
     ProductPage("备份偏好",vm) {
-        ProductSection {ProductPicker("并发模式",s.pipelineMode,listOf("automatic" to "自动","custom" to "自定义"),!vm.busy){vm.setString("pipelineMode",it)};SettingsRow("高级配置",onClick={vm.navigate("pipeline")})}
-        ProductSection("上传画质","是否占用空间，以 Google 相册显示为准。") {ProductPicker("上传画质",s.quality,listOf("original" to "不计配额原画质","quota" to "计配额原画质","saver" to "节省空间"),!vm.busy){vm.setString("quality",it)}}
-        ProductSection("Live Photo 备份方式","切换方式只影响新任务，已有照片不会自动重新上传。") {ProductPicker("备份方式",s.livePhotoPairing,listOf("original" to "原始照片配对","stepwise" to "原始照片配对（分步上传）","motion" to "动态照片封装"),!vm.busy){vm.setString("livePhotoPairing",it)}}
-        ProductSection("编辑过的照片与视频","同时保留修改前后的内容；内容相同只备份一份。不保留撤销编辑的记录。") {
+        ProductSection {ProductPicker("并发模式",s.pipelineMode,listOf("automatic" to "自动","custom" to "自定义"),!vm.busy,description="自动模式根据设备资源调整，自定义参数可在高级配置中设置。"){vm.setString("pipelineMode",it)};SettingsRow("高级配置",onClick={vm.navigate("pipeline")})}
+        ProductSection("上传画质") {ProductPicker("上传画质",s.quality,listOf("original" to "不计配额原画质","quota" to "计配额原画质","saver" to "节省空间"),!vm.busy,description="是否占用空间，以 Google 相册显示为准。",optionDescriptions=mapOf("original" to "保留原始清晰度，使用当前免配额上传方式","quota" to "使用 Google 账号存储空间","saver" to "可能压缩照片和视频")){vm.setString("quality",it)}}
+        ProductSection("Live Photo 备份方式") {ProductPicker("备份方式",s.livePhotoPairing,listOf("original" to "原始照片配对","stepwise" to "原始照片配对（分步上传）","motion" to "动态照片封装"),!vm.busy,description="切换方式只影响新任务，已有照片不会自动重新上传。",optionDescriptions=mapOf("original" to "照片与视频配对，按一个媒体项目备份并一次确认","stepwise" to "先保存照片，再关联动态视频","motion" to "单个文件内嵌动态视频，按单文件备份")){vm.setString("livePhotoPairing",it)}}
+        ProductSection("编辑过的照片与视频") {
             SettingsRow("版本保留",editPolicyLabel(s.editPolicy),onClick={vm.sheet="edit-policy"})
-            LText("Android 通常只提供当前文件，无法验证的编辑前原件不会被伪造。",style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(16.dp))
         }
         ProductSection(footer="将本机相簿同步到 Google 相册。从本机相簿移除照片，不会删除云端内容。只对新任务生效。") {ToggleRow("单向同步相簿","",s.albumMode!="none",enabled=!vm.busy){vm.setAlbumSync(it)}}
         ProductSection {SettingsRow("高级备份检查",onClick={vm.navigate("checks")})}
@@ -285,7 +296,12 @@ fun FoldersScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,on
     val s=data.settings
     var all by rememberSaveable(s.account){mutableStateOf(s.allFolders)}
     var chosen by rememberSaveable(s.account){mutableStateOf(ArrayList(s.folders))}
-    var auto by rememberSaveable(s.account){mutableStateOf(if(s.onboarded)s.auto else true)}
+    var auto by rememberSaveable(s.account){mutableStateOf(if(vm.focusAutomaticBackup||s.onboarded)s.auto else true)}
+    val automaticTarget=remember{BringIntoViewRequester()}
+    var automaticReady by remember{mutableStateOf(false)}
+    LaunchedEffect(vm.focusAutomaticBackup,automaticReady) {
+        if(vm.focusAutomaticBackup&&automaticReady){automaticTarget.bringIntoView();vm.automaticBackupFocused()}
+    }
     val folders=data.media.distinctBy{it.folderKey}.sortedBy{it.folderName}
     val folderCounts=rememberFolderCounts(data)
     val count=data.logicalMedia.count{all||LivePhotoPairing.folders(it,data.media).any{key->key in chosen}||"@camera" in chosen&&it.folderName.equals("Camera",true)}
@@ -296,7 +312,9 @@ fun FoldersScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()->Unit,on
         }
         ProductSection(footer="自动备份会识别范围内新增和修改内容。系统后台安排不保证即时，打开应用可继续。") {
             ProductValue("将备份","$count 项")
-            ToggleRow("确认后开启自动备份","",auto){auto=it}
+            Box(Modifier.bringIntoViewRequester(automaticTarget).onGloballyPositioned{automaticReady=true}) {
+                ToggleRow("开启自动备份","",auto){auto=it}
+            }
             ProductValue("上传画质",qualityName(s.quality));ProductValue("Live Photo",livePhotoLabel(s.livePhotoPairing));ProductValue("网络",if(s.wifi)"仅 Wi-Fi" else "Wi-Fi 与蜂窝")
             ProductAction("确认范围与设置",enabled=s.account.isNotEmpty()&&(all||chosen.isNotEmpty())&&!vm.busy){vm.confirmScope(all,chosen.toSet(),auto)}
             if(s.account.isEmpty())SettingsRow("请先连接 Google 账号",onClick={vm.navigate("accounts")})
@@ -426,11 +444,20 @@ fun FreeSpaceScreen(vm:HarborViewModel,data:HarborUiData) {
         ProductSection {
             LText("通过 Google 相册释放空间",style=MaterialTheme.typography.titleMedium,modifier=Modifier.padding(16.dp))
             LText("备份完成后，使用 Google 相册的“释放空间”，由它识别并移除已备份的本机照片和视频。",modifier=Modifier.padding(horizontal=16.dp))
-            ProductAction("前往 Google 相册释放空间",enabled=!vm.busy,onClick=vm::openOfficialFreeSpace)
+            LText("请在 Google 相册中登录与 PicHarbor 备份时相同的 Google 账号。",style=MaterialTheme.typography.bodyMedium,modifier=Modifier.padding(horizontal=16.dp,vertical=12.dp))
+            Button(enabled=!vm.busy,onClick=vm::openOfficialFreeSpace,modifier=Modifier.fillMaxWidth().padding(16.dp)) {
+                LIcon(Icons.Outlined.OpenInNew,null);Spacer(Modifier.width(8.dp));LText("前往 Google 相册释放空间")
+            }
         }
-        ProductSection(footer="请确认 Google 相册当前使用的是备份账号。菜单名称和位置可能因版本或语言有所不同。") {
+        ProductSection(footer="菜单名称和位置可能因版本或语言有所不同。") {
             ProductAction("其他打开方式"){alternatives=!alternatives}
-            if(alternatives){LText("打开 Google 相册，点击头像，再选择“释放空间”。",modifier=Modifier.padding(16.dp));ProductAction("打开 Google 相册"){val intent=context.packageManager.getLaunchIntentForPackage("com.google.android.apps.photos");if(intent==null||!context.openProductIntent(intent))vm.say("请先安装 Google 相册")}}
+            if(alternatives){
+                LText("在主屏幕长按 Google 相册图标，再点“释放空间”。",modifier=Modifier.padding(16.dp))
+                LText("打开 Google 相册，点击头像，再选择“释放空间”。",modifier=Modifier.padding(horizontal=16.dp))
+                OutlinedButton(onClick={val intent=context.packageManager.getLaunchIntentForPackage("com.google.android.apps.photos");if(intent==null||!context.openProductIntent(intent))vm.say("请先安装 Google 相册")},modifier=Modifier.fillMaxWidth().padding(16.dp)) {
+                    LIcon(Icons.Outlined.OpenInNew,null);Spacer(Modifier.width(8.dp));LText("打开 Google 相册")
+                }
+            }
         }
         ProductSection {LText("请选择释放设备空间，避免误入清理云端存储。请先确认备份完成；PicHarbor 不会删除手机原件。",modifier=Modifier.padding(16.dp))}
     }

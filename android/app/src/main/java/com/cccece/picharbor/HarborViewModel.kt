@@ -47,6 +47,9 @@ class HarborViewModel(app:Application):AndroidViewModel(app) {
     }
     var page by mutableStateOf("photos");private set
     var pageKey by mutableStateOf(UUID.randomUUID().toString());private set
+    var focusAutomaticBackup by mutableStateOf(false);private set
+    fun showAutomaticBackup(){focusAutomaticBackup=true;navigate("folders")}
+    fun automaticBackupFocused(){focusAutomaticBackup=false}
     var scanPurpose by mutableStateOf("");private set
     var scanResults by mutableStateOf(listOf<String>());private set
     var scanner:(Boolean)->Unit={}

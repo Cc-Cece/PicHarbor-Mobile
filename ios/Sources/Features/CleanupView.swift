@@ -11,6 +11,7 @@ struct CleanupView: View {
             Section {
                 Label(L10n.text("通过 Google 相册释放空间"), systemImage: "externaldrive.badge.checkmark").font(.headline)
                 Text(L10n.text("备份完成后，使用 Google 相册的“释放空间”，由它识别并移除已备份的本机照片和视频。")).foregroundStyle(.secondary)
+                Text(L10n.text("请在 Google 相册中登录与 PicHarbor 备份时相同的 Google 账号。")).font(.footnote).foregroundStyle(.secondary)
                 Button(L10n.text("前往 Google 相册释放空间")) {
                     opening = true
                     GooglePhotosLauncher.openFreeUpSpace { accepted in
@@ -30,7 +31,7 @@ struct CleanupView: View {
                         GooglePhotosLauncher.openApp { if !$0 { unavailable = true } }
                     }.accessibilityIdentifier("googlePhotos.openApp")
                 }
-            } footer: { Text(L10n.text("请确认 Google 相册当前使用的是备份账号。菜单名称和位置可能因版本或语言有所不同。")) }
+            } footer: { Text(L10n.text("菜单名称和位置可能因版本或语言有所不同。")) }
             Section {
                 Text(L10n.text("请选择释放设备空间，避免误入清理云端存储。移除后可在苹果相册“最近删除”中查看；需要立即腾出空间时，再自行确认是否清空。开启 iCloud 照片时，本机删除也会同步到同一图库的其他设备。")).font(.footnote).foregroundStyle(.secondary)
             }

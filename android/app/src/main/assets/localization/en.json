@@ -1423,5 +1423,10 @@
   "系统尚未验证互联网连接。": "Android has not verified Internet access.",
   "通知设置": "Notification settings",
   "配置文件过大": "Configuration file is too large",
-  "重置缩放": "Reset zoom"
+  "重置缩放": "Reset zoom",
+  "在主屏幕长按 Google 相册图标，再点“释放空间”。": "On your Home screen, touch and hold the Google Photos icon, then tap “Free up space”.",
+  "自动模式根据设备资源调整，自定义参数可在高级配置中设置。": "Automatic mode adapts to device resources. Set custom parameters in Advanced settings.",
+  "菜单名称和位置可能因版本或语言有所不同。": "Menu names and locations may vary by version or language.",
+  "请在 Google 相册中登录与 PicHarbor 备份时相同的 Google 账号。": "Sign in to Google Photos with the same Google Account you use for backups in PicHarbor.",
+  "相册": "Albums"
 }

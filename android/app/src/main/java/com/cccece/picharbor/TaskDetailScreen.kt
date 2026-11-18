@@ -49,7 +49,7 @@ fun TaskDetailScreen(vm:HarborViewModel,data:HarborUiData) {
             ProductSection(if(item.state in setOf("failed","album_pending"))"需要处理" else "当前状态") {
                 LText(if(item.error.isNotBlank())Messages.error(item.error) else phaseLabel(item.state),modifier=Modifier.padding(16.dp))
                 if(data.transfer.item==item.id)LinearProgressIndicator(progress={if(data.transfer.total>0)(data.transfer.bytes.toFloat()/data.transfer.total).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth().padding(16.dp))
-                if(item.state in setOf("done","exists"))SettingsRow("前往 Google 相册释放空间",onClick={vm.navigate("free-space")})
+                if(item.state in setOf("done","exists"))Button(onClick={vm.navigate("free-space")},modifier=Modifier.fillMaxWidth().padding(16.dp)){LText("前往 Google 相册释放空间")}
             }
             ProductSection {
                 if(item.state in setOf("done","exists"))ProductAction(if(item.archivedAt>0)"取消归档" else "归档",Icons.Outlined.Archive,!vm.busy){vm.archiveItem(item.id,item.archivedAt>0)}
