@@ -12,7 +12,9 @@ Android 代理修复版本 `2.0.0-alpha.5` 解决带空格的代理节点名称�
 
 Android `2.0.0-alpha.6` 增加活动左滑操作、照片状态标志底色，并将活动菜单改为仅图标，见 [界面调整记录](specs/ANDROID-UI-ADJUSTMENTS-2026-11-18.md)。
 
-最新版本 Android `2.0.0-alpha.7` / iOS `0.2.31` 对齐备份卡片的整体速度、剩余大小和阶段计数，并在两端展示自动备份开启状态，见 [备份卡片调整记录](specs/BACKUP-DASHBOARD-PARITY-2026-11-18.md)。
+Android `2.0.0-alpha.7` / iOS `0.2.31` 对齐备份卡片的整体速度、剩余大小和阶段计数，并在两端展示自动备份开启状态，见 [备份卡片调整记录](specs/BACKUP-DASHBOARD-PARITY-2026-11-18.md)。
+
+最新版本 Android `2.0.0-alpha.8` / iOS `0.2.32` 更新释放空间指引与同账号提示，统一 Android 底部选项面板，并支持点击自动备份状态直达开关，见 [界面调整记录](specs/NATIVE-OPTIONS-CLEANUP-2026-11-18.md)。
 
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
 
