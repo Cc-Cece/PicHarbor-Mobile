@@ -6,6 +6,7 @@ import UIKit
 
 /// Compact native row designed to be embedded directly inside a host app's `List` or `Form` settings screen.
 public struct SelfRefreshSection: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var manager = SelfRefreshManager.shared
 
     public init() {}
@@ -22,6 +23,8 @@ public struct SelfRefreshSection: View {
                     .foregroundStyle(badgeColor)
             }
         }
+        .task { manager.reloadEmbeddedProfile() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { manager.reloadEmbeddedProfile() } }
         .accessibilityIdentifier("settings.selfRefresh")
         .selfRefreshTwoFactorPrompt()
     }
@@ -47,6 +50,7 @@ public struct SelfRefreshSection: View {
 /// Keeps only **Current Status**, **Secondary Page Navigation Entries** (Required Setup, Health Check, Optional Actions),
 /// **Language Switcher**, and **About Component** on the main screen.
 public struct SelfRefreshView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var manager = SelfRefreshManager.shared
     @State private var showAboutSheet = false
     @State private var showFeedbackAlert = false
@@ -198,6 +202,7 @@ public struct SelfRefreshView: View {
             manager.reloadEmbeddedProfile()
             _ = await manager.checkTunnelConnection()
         }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { manager.reloadEmbeddedProfile() } }
         .alert(
             manager.activeNotice?.title ?? "SelfRefreshKit",
             isPresented: $showFeedbackAlert

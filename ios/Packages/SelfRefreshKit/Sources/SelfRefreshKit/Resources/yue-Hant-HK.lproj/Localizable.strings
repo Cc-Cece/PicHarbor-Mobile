@@ -33,8 +33,8 @@
 "srk.required.step2.title" = "2. 登入 Apple 帳戶";
 "srk.required.step2.done" = "已認證";
 "srk.required.step2.pending" = "未完成 · 點擊登入";
-"srk.required.step3.title" = "3. 首次本機簽名接管";
-"srk.required.step3.sub_done" = "本機鑰匙圈證書已接管";
+"srk.required.step3.title" = "3. 本機續簽設定";
+"srk.required.step3.sub_done" = "已完成本機續簽設定";
 "srk.required.step3.sub_pending" = "選取本應用未簽名 IPA 完成首次覆蓋安裝";
 "srk.required.step3.badge_pending" = "待接管";
 "srk.required.tunnel.title" = "本地迴環隧道";
@@ -51,7 +51,7 @@
 "srk.health.item.anisette.invalid" = "Anisette URL 格式無效";
 "srk.health.item.account.title" = "Apple 開發者憑據";
 "srk.health.item.account.missing" = "尚未完成 Apple ID 登入認證";
-"srk.health.item.profile.taken_over" = "本機證書已接管";
+"srk.health.item.profile.taken_over" = "已完成本機續簽設定";
 "srk.health.item.profile.pending" = "待首次 IPA 接管";
 "srk.optional.shortcut.header" = "捷徑與自動化";
 "srk.optional.shortcut.configure" = "設定「自動續簽」背景捷徑";

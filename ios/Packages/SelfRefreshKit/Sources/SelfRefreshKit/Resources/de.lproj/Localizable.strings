@@ -33,8 +33,8 @@
 "srk.required.step2.title" = "2. Mit Apple-Account anmelden";
 "srk.required.step2.done" = "Authentifiziert";
 "srk.required.step2.pending" = "Offen · Zum Anmelden tippen";
-"srk.required.step3.title" = "3. Initiale Signaturübernahme";
-"srk.required.step3.sub_done" = "Lokales Schlüsselbund-Zertifikat aktiv";
+"srk.required.step3.title" = "3. Verlängerung auf dem Gerät";
+"srk.required.step3.sub_done" = "Verlängerung auf dem Gerät eingerichtet";
 "srk.required.step3.sub_pending" = "Unsignierte IPA für Erstübernahme wählen";
 "srk.required.step3.badge_pending" = "Ausstehend";
 "srk.required.tunnel.title" = "Loopback-Tunnel";
@@ -51,7 +51,7 @@
 "srk.health.item.anisette.invalid" = "Ungültiges Anisette-URL-Format";
 "srk.health.item.account.title" = "Apple-Entwicklersitzung";
 "srk.health.item.account.missing" = "Apple-ID-Anmeldung noch nicht abgeschlossen";
-"srk.health.item.profile.taken_over" = "Lokales Zertifikat aktiv";
+"srk.health.item.profile.taken_over" = "Verlängerung auf dem Gerät eingerichtet";
 "srk.health.item.profile.pending" = "Initiale IPA-Übernahme ausstehend";
 "srk.optional.shortcut.header" = "Kurzbefehle & Automation";
 "srk.optional.shortcut.configure" = "Hintergrund-Kurzbefehl konfigurieren";

@@ -33,8 +33,8 @@
 "srk.required.step2.title" = "2. 登录 Apple 账号";
 "srk.required.step2.done" = "已认证";
 "srk.required.step2.pending" = "未完成 · 点击登录";
-"srk.required.step3.title" = "3. 首次本机签名接管";
-"srk.required.step3.sub_done" = "本机钥匙串证书已接管";
+"srk.required.step3.title" = "3. 本机续签设置";
+"srk.required.step3.sub_done" = "已完成本机续签设置";
 "srk.required.step3.sub_pending" = "选择本应用未签名 IPA 完成首次覆盖安装";
 "srk.required.step3.badge_pending" = "待接管";
 "srk.required.tunnel.title" = "本地回环隧道";
@@ -51,7 +51,7 @@
 "srk.health.item.anisette.invalid" = "Anisette URL 格式无效";
 "srk.health.item.account.title" = "Apple 开发者凭证";
 "srk.health.item.account.missing" = "尚未完成 Apple ID 登录认证";
-"srk.health.item.profile.taken_over" = "本机证书已接管";
+"srk.health.item.profile.taken_over" = "已完成本机续签设置";
 "srk.health.item.profile.pending" = "待首次 IPA 接管";
 "srk.optional.shortcut.header" = "快捷指令与自动化";
 "srk.optional.shortcut.configure" = "配置「自动续签」快捷指令";

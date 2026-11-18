@@ -33,8 +33,8 @@
 "srk.required.step2.title" = "2. Apple アカウントにサインイン";
 "srk.required.step2.done" = "認証済み";
 "srk.required.step2.pending" = "未完了 · タップしてログイン";
-"srk.required.step3.title" = "3. 初回ローカル署名引き継ぎ";
-"srk.required.step3.sub_done" = "端末キーチェーン証明書が有効";
+"srk.required.step3.title" = "3. 端末内更新の設定";
+"srk.required.step3.sub_done" = "端末内更新の設定完了";
 "srk.required.step3.sub_pending" = "未署名IPAを選択して初回上書きインストール";
 "srk.required.step3.badge_pending" = "未完了";
 "srk.required.tunnel.title" = "ループバック VPN";
@@ -51,7 +51,7 @@
 "srk.health.item.anisette.invalid" = "Anisette URL の形式が無効です";
 "srk.health.item.account.title" = "Apple 開発者セッション";
 "srk.health.item.account.missing" = "Apple ID 認証がまだ完了していません";
-"srk.health.item.profile.taken_over" = "端末証明書引き継ぎ済み";
+"srk.health.item.profile.taken_over" = "端末内更新の設定完了";
 "srk.health.item.profile.pending" = "初回 IPA 引き継ぎ待ち";
 "srk.optional.shortcut.header" = "ショートカットと自動化";
 "srk.optional.shortcut.configure" = "バックグラウンド自動更新ショートカット設定";

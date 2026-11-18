@@ -82,6 +82,11 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks | grep -i iphoneos || true
 
+      - name: Check self-refresh setup recovery
+        run: |
+          swiftc Packages/SelfRefreshKit/Sources/SelfRefreshKit/Core/RefreshSetupEvidence.swift tools/test_refresh_setup.swift -o "$RUNNER_TEMP/refresh-setup-tests"
+          "$RUNNER_TEMP/refresh-setup-tests"
+
       - name: Build unsigned .app
         env:
           SCHEME: ${{ steps.app.outputs.name }}

@@ -33,8 +33,8 @@
 "srk.required.step2.title" = "2. Sign In to Apple Account";
 "srk.required.step2.done" = "Authenticated";
 "srk.required.step2.pending" = "Incomplete · Tap to Sign In";
-"srk.required.step3.title" = "3. Initial Local Signing Takeover";
-"srk.required.step3.sub_done" = "Local Keychain certificate active";
+"srk.required.step3.title" = "3. On-device Refresh Setup";
+"srk.required.step3.sub_done" = "On-device refresh is configured";
 "srk.required.step3.sub_pending" = "Select unsigned app IPA to complete initial takeover";
 "srk.required.step3.badge_pending" = "Pending";
 "srk.required.tunnel.title" = "Loopback Tunnel";
@@ -51,7 +51,7 @@
 "srk.health.item.anisette.invalid" = "Invalid Anisette URL format";
 "srk.health.item.account.title" = "Apple Developer Session";
 "srk.health.item.account.missing" = "Apple ID sign-in not completed yet";
-"srk.health.item.profile.taken_over" = "Local certificate active";
+"srk.health.item.profile.taken_over" = "On-device refresh is configured";
 "srk.health.item.profile.pending" = "Pending initial IPA takeover";
 "srk.optional.shortcut.header" = "Shortcuts & Automation";
 "srk.optional.shortcut.configure" = "Configure Background Auto-Refresh Shortcut";

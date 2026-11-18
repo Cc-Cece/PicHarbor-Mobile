@@ -33,8 +33,8 @@
 "srk.required.step2.title" = "2. Connexion au compte Apple";
 "srk.required.step2.done" = "Authentifié";
 "srk.required.step2.pending" = "Incomplet · Appuyer pour se connecter";
-"srk.required.step3.title" = "3. Prise en charge locale initiale";
-"srk.required.step3.sub_done" = "Certificat local du trousseau actif";
+"srk.required.step3.title" = "3. Renouvellement sur l’appareil";
+"srk.required.step3.sub_done" = "Renouvellement sur l’appareil configuré";
 "srk.required.step3.sub_pending" = "Sélectionner l’IPA non signé pour l’installation initiale";
 "srk.required.step3.badge_pending" = "En attente";
 "srk.required.tunnel.title" = "Tunnel Loopback";
@@ -51,7 +51,7 @@
 "srk.health.item.anisette.invalid" = "Format d’URL Anisette invalide";
 "srk.health.item.account.title" = "Session développeur Apple";
 "srk.health.item.account.missing" = "Connexion identifiant Apple non terminée";
-"srk.health.item.profile.taken_over" = "Certificat local actif";
+"srk.health.item.profile.taken_over" = "Renouvellement sur l’appareil configuré";
 "srk.health.item.profile.pending" = "En attente de la prise en charge IPA initiale";
 "srk.optional.shortcut.header" = "Raccourcis et automatisation";
 "srk.optional.shortcut.configure" = "Configurer le raccourci de renouvellement auto";

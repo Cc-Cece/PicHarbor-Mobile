@@ -33,8 +33,8 @@
 "srk.required.step2.title" = "2. Apple 계정 로그인";
 "srk.required.step2.done" = "인증됨";
 "srk.required.step2.pending" = "미완료 · 탭하여 로그인";
-"srk.required.step3.title" = "3. 초기 로컬 서명 전환";
-"srk.required.step3.sub_done" = "기기 키체인 인증서 활성화됨";
+"srk.required.step3.title" = "3. 기기 내 갱신 설정";
+"srk.required.step3.sub_done" = "기기 내 갱신 설정 완료";
 "srk.required.step3.sub_pending" = "미서명 IPA를 선택하여 초기 덮어쓰기 설치 완료";
 "srk.required.step3.badge_pending" = "대기 중";
 "srk.required.tunnel.title" = "루프백 터널";
@@ -51,7 +51,7 @@
 "srk.health.item.anisette.invalid" = "잘못된 Anisette URL 형식";
 "srk.health.item.account.title" = "Apple 개발자 자격 증명";
 "srk.health.item.account.missing" = "Apple ID 로그인이 아직 완료되지 않았습니다";
-"srk.health.item.profile.taken_over" = "로컬 인증서 전환됨";
+"srk.health.item.profile.taken_over" = "기기 내 갱신 설정 완료";
 "srk.health.item.profile.pending" = "초기 IPA 전환 대기 중";
 "srk.optional.shortcut.header" = "단축어 및 자동화";
 "srk.optional.shortcut.configure" = "백그라운드 자동 갱신 단축어 설정";

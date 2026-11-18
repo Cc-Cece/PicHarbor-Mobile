@@ -24,6 +24,7 @@ public final class SelfRefreshManager: ObservableObject {
     @Published public private(set) var pairingInspection: PairingFileInspection?
     @Published public private(set) var authSession: AppleAuthSession?
     @Published public private(set) var isLocalCertificateTakenOver: Bool = false
+    @Published public private(set) var hasSuccessfulProfileRefresh: Bool = false
     @Published public private(set) var isTunnelConnected: Bool = false
     @Published public var appleID: String = ""
     @Published public var anisetteURLString: String = "https://ani.sidestore.io" {
@@ -224,7 +225,7 @@ public final class SelfRefreshManager: ObservableObject {
 
     /// Step 3: Local Certificate Takeover Completed
     public var isStep3TakeoverCompleted: Bool {
-        isLocalCertificateTakenOver
+        isLocalCertificateTakenOver || hasSuccessfulProfileRefresh
     }
 
     /// Number of completed mandatory setup steps (0...3).
@@ -267,9 +268,23 @@ public final class SelfRefreshManager: ObservableObject {
     // MARK: - Step 1: Pairing File Import (Supports XML & Binary Plist + Detailed Feedback)
 
     public func reloadEmbeddedProfile(in bundleURL: URL = Bundle.main.bundleURL) {
+        // Shortcuts can run in a different app lifecycle. Reload persisted success
+        // evidence as well as the expiration date when the UI becomes active.
+        self.isLocalCertificateTakenOver = defaults.bool(forKey: Keys.takenOver)
+        self.lastRefreshDate = defaults.object(forKey: Keys.lastRefreshDate) as? Date
+        self.hasSuccessfulProfileRefresh = false
         var active: ProvisioningProfileMetadata? = ProfileInspector.inspectEmbeddedProfile(in: bundleURL)
         if let data = defaults.data(forKey: Keys.cachedProfileMetadata),
            let cached = try? JSONDecoder().decode(ProvisioningProfileMetadata.self, from: data) {
+            // Older versions already wrote both fields only after the backend
+            // successfully installed the profile. Do not infer success merely
+            // from an embedded profile or a cached expiration countdown.
+            self.hasSuccessfulProfileRefresh = RefreshSetupEvidence.confirmsLocalRefresh(
+                hostBundleID: Bundle.main.bundleIdentifier ?? "",
+                profileBundleID: cached.bundleIdentifier, profileUUID: cached.uuid,
+                teamID: cached.teamIdentifier, creationDate: cached.creationDate,
+                expirationDate: cached.expirationDate, installedAt: lastRefreshDate
+            )
             if let current = active {
                 if cached.expirationDate > current.expirationDate {
                     active = cached
@@ -612,12 +627,12 @@ public final class SelfRefreshManager: ObservableObject {
                 let rem = meta.remainingDaysAndHours()
                 profileInfo = rem.isExpired ? localized(.statusExpiredBadge) : "\(rem.days)d \(rem.hours)h"
             } else {
-                profileInfo = isLocalCertificateTakenOver ? localized(.healthItemProfileTakenOver) : localized(.healthItemProfilePending)
+                profileInfo = isStep3TakeoverCompleted ? localized(.healthItemProfileTakenOver) : localized(.healthItemProfilePending)
             }
             items.append(.init(
                 id: "account",
                 title: localized(.healthItemAccountTitle),
-                status: isLocalCertificateTakenOver ? .healthy : .warning,
+                status: isStep3TakeoverCompleted ? .healthy : .warning,
                 detail: "Team: \(session.teamID) · \(profileInfo)"
             ))
         } else {
@@ -659,7 +674,8 @@ public final class SelfRefreshManager: ObservableObject {
 
     // MARK: - Mode A: 1-Second Profile-Only Refresh (No Crash / No IPA Needed)
 
-    /// Installs a new provisioning profile with misagent. Does not mark the local certificate as taken over.
+    /// Installs a new profile and records working local refresh setup, without
+    /// claiming that a full IPA signing-key takeover took place.
     /// - Parameter allowInteractiveTwoFactor: Pass `false` from the background Shortcut so a missing code fails instead of waiting.
     public func refreshProfileOnly(allowInteractiveTwoFactor: Bool = true) async throws {
         try ensureExclusiveAuthOperation(noticeTitle: .noticeRefreshFailedTitle)
@@ -741,6 +757,7 @@ public final class SelfRefreshManager: ObservableObject {
         if let encoded = try? JSONEncoder().encode(updatedProfile) {
             defaults.set(encoded, forKey: Keys.cachedProfileMetadata)
         }
+        reloadEmbeddedProfile()
         postNotice(
             title: localized(.noticeRefreshSuccessTitle),
             message: localized(.noticeRefreshSuccessMessage),
