@@ -32,6 +32,8 @@ iOS `0.2.39` 修复快捷指令续签成功后必需操作仍显示 2/3，自动
 
 Android `2.0.0-alpha.16` 修复高级实况设置选择后无法再次打开底部面板，并将入口图标改为向下箭头，见 [面板修复记录](specs/ANDROID-SHEET-REOPEN-2026-11-18.md)。只编译、不安装。
 
+Android `2.0.0-alpha.17` / iOS `0.2.40` 优化传输到电脑页面，突出扫码、折叠手动输入，独立选择发送范围并整理状态与操作，见 [传输页面优化记录](specs/COMPUTER-TRANSFER-PAGE-2026-11-19.md)。只编译、不安装。
+
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
 
 ## Development

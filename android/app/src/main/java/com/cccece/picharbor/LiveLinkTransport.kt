@@ -223,8 +223,8 @@ class LiveLinkTransport(private val graph:AppGraph) {
         incoming.value=null;incomingSession=null
         begin(peer.target,offer,peer)
     }
-    fun send(target:ComputerTarget)=begin(target,null,null)
-    private fun begin(target:ComputerTarget,incomingOffer:IncomingComputerOffer?,existing:Session?) {
+    fun send(target:ComputerTarget,mediaIDs:Set<String>?=null)=begin(target,null,null,mediaIDs?.toSet())
+    private fun begin(target:ComputerTarget,incomingOffer:IncomingComputerOffer?,existing:Session?,mediaIDs:Set<String>?=null) {
         if(progress.value.busy)return
         progress.value=LinkProgress(true,"正在连接电脑…")
         job=graph.scope.launch {
@@ -235,7 +235,7 @@ class LiveLinkTransport(private val graph:AppGraph) {
                 peer=existing?:establish(target);hello(peer)
                 val all=graph.backup.identifiedMedia()
                 val settings=graph.preferences.get()
-                val assets=if(incomingOffer!=null)select(incomingOffer.scope,all) else logical(all).filter{settings.includes(it)}
+                val assets=if(incomingOffer!=null)select(incomingOffer.scope,all) else if(mediaIDs!=null)selectedLinkMedia(all,mediaIDs) else logical(all).filter{settings.includes(it)}
                 if(assets.isEmpty())throw EngineFailure("NO_MEDIA")
                 if(incomingOffer!=null) {
                     if(saved()?.fingerprint!=peer.target.fingerprint)throw EngineFailure("LIVELINK_PIN")

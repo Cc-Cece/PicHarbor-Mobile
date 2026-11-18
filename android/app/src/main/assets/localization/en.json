@@ -1482,5 +1482,20 @@
   "动态照片结构无法确认，已保留原文件，未确认动态部分。": "The Motion Photo structure could not be verified. The original is preserved, but its motion is not verified.",
   "不同版本包含不同的动态信息，已分别保留原文件。": "Versions contain different motion information. Their original files are preserved separately.",
   "无法读取已保存的识别结果，请重新创建备份任务。": "The saved format decision could not be read. Please create a new backup task.",
-  "正在核对已提交的配对结果，请稍后重试。": "Checking the submitted pair. Please try again later."
+  "正在核对已提交的配对结果，请稍后重试。": "Checking the submitted pair. Please try again later.",
+  "打开电脑版的接收页面，让手机和电脑连接同一局域网。": "Open the receive page on your computer and connect both devices to the same local network.",
+  "目标电脑": "Destination computer",
+  "连接信息已就绪，点击开始发送后等待电脑确认。": "Connection details are ready. Start sending, then approve on your computer.",
+  "手动输入连接信息": "Enter connection details manually",
+  "连接信息可在电脑版的接收页面查看。已配对的电脑无需再次填写配对码。": "Find these details on the computer’s receive page. A paired computer does not need a new pairing code.",
+  "发送范围": "Send selection",
+  "选择照片与视频": "Choose photos and videos",
+  "仅用于本次传输，不改变自动备份。无需 Google 账号。": "Applies to this transfer only. Automatic backup is unchanged. No Google account is required.",
+  "传输状态": "Transfer status",
+  "请先扫码或填写连接信息。": "Scan a QR code or enter the connection details first.",
+  "仅在局域网内直接传输。发送前需电脑确认；请保持应用在前台，锁屏后传输停止。": "Transfers directly over your local network after approval on your computer. Keep the app open; locking the screen stops the transfer.",
+  "忘记这台电脑？": "Forget this computer?",
+  "下次连接需要重新扫码配对，已发送的文件会保留。": "Scan and pair again next time. Files already sent will be kept.",
+  "正在识别二维码": "Reading QR code",
+  "已选择 {0} 个相册": "Selected {0} albums"
 }
