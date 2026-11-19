@@ -1,62 +1,77 @@
 <div align="center">
 
-<img src="assets/brand/PicHarbor.png" width="96" height="96" alt="PicHarbor 图标" />
+<img src="assets/brand/PicHarbor.png" width="96" height="96" alt="PicHarbor logo" />
 
 # PicHarbor Mobile
 
-使用原生界面，将手机里的照片、视频和实况照片备份到 Google 相册。
+Back up photos, videos, and Live Photos to Google Photos with a native mobile experience.
 
 [![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](android/)
 [![iOS](https://img.shields.io/badge/iOS-17%2B-000000?logo=apple&logoColor=white)](ios/)
 [![Android build](https://github.com/Cc-Cece/PicHarbor-Mobile/actions/workflows/android-build.yml/badge.svg)](https://github.com/Cc-Cece/PicHarbor-Mobile/actions/workflows/android-build.yml)
 [![iOS build](https://github.com/Cc-Cece/PicHarbor-Mobile/actions/workflows/ios-build.yml/badge.svg)](https://github.com/Cc-Cece/PicHarbor-Mobile/actions/workflows/ios-build.yml)
 
-[主要功能](#主要功能) · [开始使用](#开始使用) · [构建](#构建) · [项目结构](#项目结构)
+<p><b>English</b> | <a href="README.zh-CN.md">简体中文</a></p>
+
+<p><a href="https://github.com/Cc-Cece/PicHarbor-Mobile">GitHub Repository</a> · <a href="https://github.com/Cc-Cece/PicHarbor-Mobile/actions">Download Builds</a> · <a href="https://github.com/Cc-Cece/SelfRefreshKit">iOS Auto-Renewal</a></p>
+
+[Features](#features) · [Quick Start](#quick-start) · [iOS Auto-Renewal](#ios-auto-renewal) · [Build](#build) · [Project Structure](#project-structure)
 
 </div>
 
-PicHarbor Mobile 将 Android 与 iOS 客户端放在同一仓库维护。两端采用一致的主要功能和页面框架，分别使用 **Jetpack Compose / Material 3** 和 **SwiftUI** 实现原生交互。Google 相册协议与共享业务逻辑由 [gpmc](https://github.com/Cc-Cece/gpmc) 提供，并以经过内容校验的快照嵌入应用。
+## Features
 
-## 主要功能
+| Capability | Description |
+| --- | --- |
+| **Photo & Live Photo Backup** | Browse photos, videos, and Live Photos, select a backup scope, and match Live Photo handling to the available resources. |
+| **Backup Queue** | Track progress and processing stages; pause, resume, retry, and manage persisted task records. |
+| **Album Organization** | Organize uploads by local album and reuse existing cloud album mappings. |
+| **In-App Proxy** | Import subscriptions or configurations, select nodes, and check connection status. |
+| **Transfer to Computer** | Scan a computer's QR code and send selected media over the same local network, without a Google account. |
+| **Native Settings & Diagnostics** | Manage accounts, appearance, and languages, and export local diagnostic logs when needed. |
+| **iOS Auto-Renewal** | Built-in SelfRefreshKit enables automatic on-device renewal through Shortcuts after a one-time computer-assisted setup. |
 
-- **照片与实况备份**：浏览照片、视频和 Live Photo，选择备份范围，按媒体资源匹配实况处理方式。
-- **备份队列**：查看进度与阶段，暂停、继续、重试和管理记录；任务状态持久保存。
-- **相册归类**：根据本机相册组织备份内容，复用已建立的云端相册映射。
-- **应用内代理**：导入订阅或配置，选择节点并查看连接状态。
-- **传输到电脑**：扫描电脑二维码，在同一局域网内发送所选照片与视频，无需 Google 账号。
-- **原生设置与诊断**：账号管理、外观和多语言设置，以及由用户主动导出的本地诊断日志。
-
-主界面包含 **照片、备份、活动、设置** 四个页面。后台执行、照片权限和安装方式遵循各平台的能力与限制。
+The app has four main tabs: **Photos, Backup, Activity, and Settings**. Background execution, photo permissions, and installation follow each platform's capabilities and restrictions.
 
 > [!NOTE]
-> 项目仍处于开发阶段，并非 Google 官方客户端。上传结果、画质和配额占用以 Google 相册实际显示为准，建议先用少量照片验证。
+> This project is under development and is not an official Google client. Verify upload results, quality, and quota usage in Google Photos with a small batch before starting a large backup.
 
-## 开始使用
+## Quick Start
 
-| 平台 | 设备要求 | 安装包 |
+| Platform | Requirements | Package |
 | --- | --- | --- |
-| Android | Android 10+，ARM64 | APK；CI 生成带独立包名的 Debug 预览版 |
-| iOS | iOS 17+，iPhone | 未签名 IPA，需自行签名安装 |
+| Android | Android 10+, ARM64 | APK; CI produces a Debug preview with a separate application ID |
+| iOS | iOS 17+, iPhone | Unsigned IPA; use a computer for the initial signing, installation, and SelfRefreshKit setup |
 
-从本仓库 [GitHub Actions](https://github.com/Cc-Cece/PicHarbor-Mobile/actions) 中选择成功的构建，在该次运行的 Artifacts 下载对应平台安装包。构建产物有保留期限；正式签名 Android 包需使用既有发布密钥构建。
+Download the platform artifact from a successful [GitHub Actions](https://github.com/Cc-Cece/PicHarbor-Mobile/actions) run. Artifacts expire after their retention period. A production-signed Android build requires the existing release key.
 
-1. 安装后授予需要的照片访问权限。
-2. 连接 Google 账号，确认备份范围和上传方式。
-3. 先备份少量照片，在 Google 相册核对结果，再开始批量备份。
+1. Install the app and grant the photo access you need.
+2. Connect your Google account and choose the backup scope and upload method.
+3. Back up a few photos, verify them in Google Photos, then proceed with larger batches.
 
-传输到电脑可直接从设置进入，与 Google 相册备份分开使用。iOS 的本机续签设置按应用内引导完成；下载到 IPA 不代表已经签名或能够直接安装。
+## iOS Auto-Renewal
 
-## 构建
+PicHarbor integrates [SelfRefreshKit](https://github.com/Cc-Cece/SelfRefreshKit). **Connect to a computer once for installation and pairing; subsequent routine renewals can run automatically on your iPhone without weekly computer connections.**
 
-### 共享核心
+1. Use [SelfRefreshSetup](https://github.com/Cc-Cece/SelfRefreshKit/tree/master/tools/SelfRefreshSetup) to sign and install the IPA and write the pairing records. Download the tool from [SelfRefreshKit Releases](https://github.com/Cc-Cece/SelfRefreshKit/releases).
+2. Open the renewal entry in PicHarbor Settings and complete Required Setup: device pairing, Apple account authentication, and local renewal setup.
+3. Install and connect LocalDevVPN, then run one manual renewal and confirm that the expiration date advances.
+4. Create a Shortcuts automation: connect LocalDevVPN → run PicHarbor's Refresh App Provisioning Profile action → disconnect LocalDevVPN.
 
-两端已包含固定版本的核心快照，普通构建无需另外克隆 gpmc。先在仓库根目录检查来源和内容一致性：
+> [!TIP]
+> Schedule it daily with Run Immediately. Renewal still requires network access, a valid Apple session, and the local loopback VPN. Check the latest renewal result periodically after setup.
+
+## Build
+
+### Shared Core
+
+Both clients include a pinned core snapshot; ordinary builds do not require a separate gpmc checkout. Check provenance and snapshot consistency from the repository root:
 
 ```shell
 python tools/sync-core.py
 ```
 
-需要升级核心时，先在独立 gpmc 仓库完成修改，再显式同步两端；不要直接修改客户端中的第三方快照。
+To update the core, make changes in the separate gpmc repository, then explicitly synchronize both clients instead of editing their vendored snapshots:
 
 ```shell
 python tools/sync-core.py --source ../gpmc
@@ -64,30 +79,30 @@ python tools/sync-core.py --source ../gpmc
 
 ### Android
 
-需要 JDK 17、Python 3.13、Android SDK 36 和 Go。仓库包含 Gradle Wrapper；代理核心在构建时从固定源码编译，CI 的工具链配置位于 [setup-build](android/.github/actions/setup-build/action.yml)。首次构建需要联网取得依赖。
+Requires JDK 17, Python 3.13, Android SDK 36, and Go. The repository includes the Gradle Wrapper. The proxy core is built from pinned source; see the CI toolchain in [setup-build](android/.github/actions/setup-build/action.yml). The first build needs network access to fetch dependencies.
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 cd android
 .\gradlew.bat :app:assembleDebug "-PbuildPython=$((Get-Command python).Source)"
 ```
 
-输出：`android/app/build/outputs/apk/debug/app-debug.apk`。
+Output: `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-已有发布签名环境的维护者，可在 `android/` 下运行：
+Maintainers with the existing release signing environment can run this from `android/`:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1 -BuildPython (Get-Command python).Source
 ```
 
-发布脚本使用工作区外保存的既有密钥，并核对固定签名证书。源码仓库不包含私钥或签名密码；普通开发使用 Debug 构建。
+The release script uses the existing key stored outside the workspace and checks its pinned certificate. Private keys and signing passwords are not included in the repository. Use Debug builds for ordinary development.
 
 ### iOS
 
-可使用根目录的 [iOS Build (Unsigned IPA)](.github/workflows/ios-build.yml) 工作流。它准备固定的 Python 和代理运行时，使用 XcodeGen 生成工程，再构建未签名 IPA；无需将个人签名证书上传到 CI。
+Use the root [iOS Build (Unsigned IPA)](.github/workflows/ios-build.yml) workflow to prepare pinned Python and proxy runtimes, generate the project with XcodeGen, and build an unsigned IPA. Personal signing certificates are not required in CI.
 
-在 macOS 本地构建时，需要 Xcode、XcodeGen 和 Python 3.13。CI 当前使用的 Xcode 版本以工作流配置为准。
+Local macOS builds require Xcode, XcodeGen, and Python 3.13. The workflow defines the Xcode version currently used by CI.
 
 ```shell
 cd ios
@@ -100,35 +115,17 @@ xcodebuild -project PicHarbor.xcodeproj -scheme PicHarbor \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 ```
 
-该命令输出 `.app`；IPA 打包步骤见同一工作流。
+This produces an `.app`; see the same workflow for IPA packaging.
 
-### 检查与源码交付
-
-```shell
-# iOS Python 离线逻辑检查；需已安装 ios/Python/requirements.lock 中的依赖
-python -m unittest discover -s ios/tests_python
-
-# Android Release APK 内容检查；需先完成对应构建
-python android/tools/inspect_release.py
-
-# 为当前已提交版本生成源码包，包含固定的 GPL 代理源码
-# 需先通过 Android 构建或 prepare_proxy.py 准备固定代理源码
-python tools/package-mobile.py
-```
-
-离线检查与编译成功不代替真实账号、云端结果或设备界面验证。源码包及本地产物写入 `delivery/`。
-
-## 项目结构
+## Project Structure
 
 ```text
 mobile/
-├─ android/       Compose 界面、Android 系统适配与构建工具
-├─ ios/           SwiftUI 界面、PhotoKit、原生传输与嵌入式 Python
-├─ assets/brand/  两端共用图标及来源记录
-├─ tools/         核心同步、图标生成、CI 下载和源码打包
-└─ .github/       两端的有效 CI 工作流
+├─ android/       Compose UI, Android integration, and build tools
+├─ ios/           SwiftUI, PhotoKit, native transfers, and embedded Python
+├─ assets/brand/  Shared artwork and provenance
+├─ tools/         Core synchronization, icons, CI downloads, and source packaging
+└─ .github/       Active workflows for both platforms
 ```
 
-开发记录、方案和页面预览由维护者在本地归档，不作为公开仓库内容。构建缓存、交付包、账号数据和签名材料不纳入版本控制。
-
-相关项目：[PicHarbor 桌面版](https://github.com/Cc-Cece/PicHarbor) · [gpmc 共享核心](https://github.com/Cc-Cece/gpmc)
+Related projects: [PicHarbor Desktop](https://github.com/Cc-Cece/PicHarbor) · [gpmc Shared Core](https://github.com/Cc-Cece/gpmc)

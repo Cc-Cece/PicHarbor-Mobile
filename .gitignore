@@ -16,6 +16,7 @@ __pycache__/
 **/*.rst
 **/*.adoc
 !/README.md
+!/README.zh-CN.md
 
 # Keep legal provenance and the format guide exported by the running app.
 !**/NOTICE.md
