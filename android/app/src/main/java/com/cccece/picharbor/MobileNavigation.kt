@@ -7,7 +7,7 @@ enum class MobilePage(val route:String) {
     Network("network"), Proxy("proxy"), ProxyProfiles("proxy-profiles"), ProxyEditor("proxy-editor"), ProxyProfile("proxy-profile"),
     Archives("archives"), ArchiveSettings("archive-settings"), Interface("interface"),
     Accounts("accounts"), Connection("connection"), Permissions("permissions"), Background("background-settings"),
-    Diagnostics("diagnostics"), About("about"), Detail("detail"), Information("information"),
+    Diagnostics("diagnostics"), About("about"), More("more"), Detail("detail"), Information("information"),
     TaskDetail("task-detail"), TaskProxy("task-proxy"), Batch("job-details"),
     Computer("live-link"), Cleanup("free-space"), BackupList("backup-list");
     val root get()=this in roots

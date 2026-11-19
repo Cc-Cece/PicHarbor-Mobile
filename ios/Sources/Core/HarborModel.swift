@@ -431,6 +431,7 @@ final class HarborModel: ObservableObject {
         let saved = try await store.load(AccountSettings.self, kind: "settings")
         settingsGeneration = Dictionary(uniqueKeysWithValues: saved.map { ($0.account, $0.generation ?? 0) })
         settings = saved.first(where: { $0.account == account })?.settings ?? BackupSettings()
+        settings = await RemoteServices.shared.resolve(settings, scope: account)
         uploadPlans = [:]
         cloudClocks = [:]; cloudSeconds = [:]; transferClocks = [:]; transferWatches = [:]; lastBudgetSweep = -100
         rateTracker = TransferRateTracker(); uploadWorkload = nil; transferProgress = [:]; progressTimes = [:]
@@ -459,6 +460,7 @@ final class HarborModel: ObservableObject {
     func saveSettings() async -> Bool {
         guard let store else { notice = L10n.text("设置尚未就绪，请等待初始化完成后重试。"); return false }
         let targetAccount = account
+        settings = await RemoteServices.shared.resolve(settings, scope: targetAccount)
         let snapshot = settings
         do {
             let generation = (settingsGeneration[targetAccount] ?? 0) + 1

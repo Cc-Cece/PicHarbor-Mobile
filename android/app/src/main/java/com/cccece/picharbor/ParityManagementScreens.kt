@@ -57,7 +57,7 @@ fun UnifiedSettingsScreen(vm:HarborViewModel,data:HarborUiData,onPermissions:()-
         }
         ProductSection {ProductAction("恢复备份默认设置",enabled=!vm.busy,destructive=true){restore=true}}
         ProductSection {
-            SettingsRow("诊断",icon=Icons.Outlined.BugReport,onClick={vm.navigate("diagnostics")})
+            SettingsRow("更多",icon=Icons.Outlined.MoreHoriz,onClick={vm.navigate("more")})
             SettingsRow("关于 PicHarbor",icon=Icons.Outlined.Info,onClick={vm.navigate("about")})
         }
     }

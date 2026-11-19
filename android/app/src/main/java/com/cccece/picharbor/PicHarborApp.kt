@@ -69,6 +69,7 @@ class AppGraph(val app:Application,val engineReady:Boolean) {
     val database=HarborDatabase.open(app)
     val dao=database.dao()
     val preferences=Preferences(app)
+    val remote=RemoteServices(this)
     val credentials=CredentialStore(app)
     val media=MediaRepository(app,dao,preferences)
     val engine=Engine(app)

@@ -447,6 +447,7 @@ fun DiagnosticsScreen(vm:HarborViewModel,data:HarborUiData,onExport:()->Unit) {
 
 @Composable
 fun AboutScreen(vm:HarborViewModel,data:HarborUiData) {
+    val remoteUpdate by vm.graph.remote.update.collectAsState()
     val context=LocalView.current.context
     ProductPage("关于",vm) {
         ProductSection {
@@ -454,9 +455,11 @@ fun AboutScreen(vm:HarborViewModel,data:HarborUiData) {
                 Image(androidx.compose.ui.res.painterResource(R.drawable.picharbor_brand),contentDescription=null,modifier=Modifier.size(64.dp))
                 Text("PicHarbor",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold)
                 LText("开发版 ${BuildConfig.VERSION_NAME}",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                remoteUpdate?.takeIf{it.optInt("build",0)>BuildConfig.VERSION_CODE}?.let{update->TextButton(onClick={val url=update.optString("url");if(url.startsWith("https://"))context.openProductIntent(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}){LText("发现新版本")}}
             }
         }
         ProductSection {LText("面向 Android 的照片与视频备份。取回内容请使用 Google 相册官方客户端。",modifier=Modifier.padding(16.dp))}
+        ProductSection {SettingsRow("诊断",icon=Icons.Outlined.BugReport,onClick={vm.navigate("diagnostics")})}
         ProductSection("开源组件") {
             LText("gpmc · GPL-3.0\nCPython · Python Software Foundation License\nblackboxprotobuf · MIT\nRequests 及依赖许可证随应用分发。",modifier=Modifier.padding(16.dp),style=MaterialTheme.typography.bodyMedium)
             SettingsRow("项目源码与许可证",onClick={if(!context.openProductIntent(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Cc-Cece/PicHarbor-Mobile"))))vm.say("暂时无法打开此页面")})

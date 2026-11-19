@@ -1,0 +1,193 @@
+package com.cccece.picharbor
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.chaquo.python.Python
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
+import java.util.UUID
+
+/** Persisted native overlay. The ordinary DataStore continues to hold personal preferences. */
+object RemotePolicies {
+    val revision=MutableStateFlow(0)
+    private fun store(c:Context)=c.getSharedPreferences("remote_policies",Context.MODE_PRIVATE)
+    fun data(c:Context,account:String)=runCatching{JSONObject(store(c).getString("scope:$account","{}")!!)}.getOrDefault(JSONObject())
+    fun locked(c:Context,key:String,account:String=""):Boolean {
+        val root=data(c,account.ifEmpty{store(c).getString("active","").orEmpty()})
+        return root.optJSONArray("forced")?.let{(0 until it.length()).any{i->it.optString(i)==key}}?:false
+    }
+    fun save(c:Context,account:String,value:JSONObject){store(c).edit().putString("scope:$account",value.toString()).putString("active",account).apply();revision.value++}
+    fun overlay(c:Context,s:HarborSettings):HarborSettings {
+        val p=data(c,s.account);val values=p.optJSONObject("values")?:return s
+        fun text(k:String,d:String)=if(locked(c,k,s.account))values.optString(k,d) else d
+        fun bool(k:String,d:Boolean)=if(locked(c,k,s.account))values.optBoolean(k,d) else d
+        fun number(k:String,d:Int)=if(locked(c,k,s.account))values.optInt(k,d) else d
+        return s.copy(auto=bool("auto",s.auto),wifi=bool("wifi",s.wifi),restart=bool("restart",s.restart),quality=text("quality",s.quality),
+            theme=text("theme",s.theme),palette=text("palette",s.palette),language=text("language",s.language),albumMode=text("albumMode",s.albumMode),
+            livePhotoPairing=text("livePhotoPairing",s.livePhotoPairing),pipelineMode=text("pipelineMode",s.pipelineMode),pipelineLimits=text("pipelineLimits",s.pipelineLimits),executionPolicy=text("executionPolicy",s.executionPolicy),
+            concurrency=number("concurrency",s.concurrency),timeout=number("timeout",s.timeout),retries=number("retries",s.retries),
+            archiveEnabled=bool("archiveEnabled",s.archiveEnabled),archiveDays=number("archiveDays",s.archiveDays),activitySource=text("activitySource",s.activitySource),activityStatus=text("activityStatus",s.activityStatus),activityGrouping=text("activityGrouping",s.activityGrouping),archiveSource=text("archiveSource",s.archiveSource))
+    }
+    val labels=mapOf("上传画质" to "quality","备份方式" to "livePhotoPairing","并发模式" to "pipelineMode","主题" to "theme","语言" to "language","主题颜色" to "palette","自动归档" to "archiveEnabled","归档时间" to "archiveDays","保留天数" to "archiveDays","保留相册分类" to "albumMode","仅 Wi-Fi" to "wifi","开启自动备份" to "auto","网络条件" to "wifi")
+}
+
+class RemoteServices(private val graph:AppGraph) {
+    private val gate=Mutex()
+    private val started=java.util.concurrent.atomic.AtomicBoolean(false)
+    val startupUi=MutableStateFlow<JSONObject?>(null)
+    val hintUi=MutableStateFlow("")
+    val update=MutableStateFlow<JSONObject?>(null)
+    val revision=MutableStateFlow(0)
+    private val context get()=graph.app
+    private fun metadata()=JSONObject().put("platform","android").put("version",BuildConfig.VERSION_NAME).put("language",java.util.Locale.getDefault().toLanguageTag()).put("system",android.os.Build.VERSION.RELEASE)
+    suspend fun call(action:String,payload:JSONObject=JSONObject()):JSONObject=gate.withLock {
+        withContext(Dispatchers.IO){
+            if(!graph.engineReady)return@withContext JSONObject().put("ok",false)
+            payload.put("context",metadata())
+            runCatching{JSONObject(Python.getInstance().getModule("harbor_remote").callAttr("dispatch",File(context.noBackupFilesDir,"services").absolutePath,action,payload.toString()).toString())}.getOrDefault(JSONObject().put("ok",false))
+        }
+    }
+    fun start(){if(!started.compareAndSet(false,true))return;graph.scope.launch {
+        graph.startup.await()
+        val result=call("startup");startupUi.value=result.optJSONObject("ui")
+        resolve()
+        call("sync");resolve();update.value=call("update").optJSONObject("update");revision.value++
+        graph.preferences.flow.map{it.account}.distinctUntilChanged().drop(1).collect{resolve()}
+    }}
+    suspend fun resolve(){
+        val settings=graph.preferences.rawGet();val values=JSONObject()
+        settings.javaClass.declaredFields.filter{!java.lang.reflect.Modifier.isStatic(it.modifiers)}.forEach{f->runCatching{f.isAccessible=true;values.put(f.name,JSONObject.wrap(f.get(settings)))}}
+        val result=call("resolve",JSONObject().put("scope",settings.account).put("values",values))
+        if(!result.optBoolean("ok"))return
+        RemotePolicies.save(context,settings.account,result)
+        graph.preferences.remoteApply(result)
+        graph.scheduler.configure()
+    }
+    fun intercept(key:String):Boolean {
+        val account=context.getSharedPreferences("remote_policies",Context.MODE_PRIVATE).getString("active","").orEmpty()
+        val data=RemotePolicies.data(context,account);val hints=data.optJSONObject("hints");val hint=hints?.optJSONObject(key)
+        if(hint!=null){
+            hints.remove(key);RemotePolicies.save(context,account,data);hintUi.value=hint.optString("message","此设置已由应用配置调整。")
+            graph.scope.launch{call("hint",JSONObject().put("scope",data.optString("scope")).put("receipt",hint.optString("id")))}
+        }
+        return hint!=null||RemotePolicies.locked(context,key,account)
+    }
+    fun event(name:String){graph.scope.launch{call("event",JSONObject().put("name",name))}}
+    suspend fun feedback(values:Map<String,String>,files:List<RemoteFile>):JSONObject {
+        val account=graph.preferences.get().account
+        val ref=MessageDigest.getInstance("SHA-256").digest((account+context.noBackupFilesDir.path).toByteArray()).joinToString(""){"%02x".format(it)}
+        return call("feedback",JSONObject().put("values",JSONObject(values).put("email",account).put("account_ref",ref)).put("files",JSONArray(files.map{JSONObject().put("path",it.path).put("kind",it.kind).put("mime",it.mime)})))
+    }
+}
+data class RemoteFile(val path:String,val kind:String,val mime:String)
+
+@Composable
+fun RemoteAlerts(vm:HarborViewModel){
+    val start by vm.graph.remote.startupUi.collectAsState();val hint by vm.graph.remote.hintUi.collectAsState()
+    if(start!=null)AlertDialog(onDismissRequest={vm.graph.remote.startupUi.value=null},title={Text(start!!.optString("title","PicHarbor"))},text={Text(start!!.optString("message"))},confirmButton={TextButton(onClick={vm.graph.remote.startupUi.value=null}){LText("好")}})
+    if(hint.isNotEmpty())AlertDialog(onDismissRequest={vm.graph.remote.hintUi.value=""},text={Text(hint)},confirmButton={TextButton(onClick={vm.graph.remote.hintUi.value=""}){LText("好")}})
+}
+
+@Composable
+fun RemoteMoreScreen(vm:HarborViewModel){
+    val context=LocalContext.current;val scope=rememberCoroutineScope();val revision by vm.graph.remote.revision.collectAsState()
+    var page by remember{mutableStateOf(JSONObject().put("title","更多").put("items",JSONArray()))}
+    var parents by remember{mutableStateOf(listOf<JSONObject>())}
+    val values=remember{mutableStateMapOf<String,String>()};var files by remember{mutableStateOf(listOf<RemoteFile>())}
+    var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")}
+    fun issue(text:String){message=text}
+    fun choose(uri:Uri,kind:String){scope.launch {
+        try {
+            val f=withContext(Dispatchers.IO){
+                val bytes=context.contentResolver.openInputStream(uri)!!.use{it.readNBytes(10*1024*1024+1)}
+                require(bytes.size<=10*1024*1024)
+                val output=File(context.cacheDir,"remote-${UUID.randomUUID()}${if(kind=="screenshot")".jpg" else ".zip"}")
+                if(kind=="screenshot"){
+                    val bounds=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+                    require(bounds.outWidth>0&&bounds.outHeight>0)
+                    var sample=1;while(maxOf(bounds.outWidth,bounds.outHeight)/sample>2048)sample*=2
+                    val bitmap=BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply{inSampleSize=sample})?:error("IMAGE")
+                    try{output.outputStream().use{bitmap.compress(Bitmap.CompressFormat.JPEG,85,it)}}finally{bitmap.recycle()}
+                }else output.writeBytes(bytes)
+                require(output.length()<=5*1024*1024);RemoteFile(output.absolutePath,kind,if(kind=="screenshot")"image/jpeg" else "application/zip")
+            }
+            if(files.count{it.kind==kind}<(if(kind=="screenshot")3 else 1))files=files+f else{File(f.path).delete();issue("附件数量已达上限")}
+        }catch(_:Exception){issue("无法添加附件，请选择 5 MiB 以内的图片或诊断文件。")}
+    }}
+    val images=rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()){uris->uris.take(3).forEach{choose(it,"screenshot")}}
+    val logs=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->uri?.let{choose(it,"diagnostic")}}
+    LaunchedEffect(revision){val r=vm.graph.remote.call("more");r.optJSONObject("page")?.let{page=it;parents=emptyList()}}
+    androidx.activity.compose.BackHandler(parents.isNotEmpty()){page=parents.last();parents=parents.dropLast(1)}
+    fun activate(item:JSONObject){
+        if(busy)return
+        val url=item.optString("url");if(url.isNotEmpty()){if(url.startsWith("https://"))context.openProductIntent(Intent(Intent.ACTION_VIEW,Uri.parse(url)));return}
+        scope.launch {
+            busy=true
+            try{
+                if(item.optString("capability")=="feedback.submit"){
+                    val result=vm.graph.remote.feedback(values,files)
+                    if(result.optBoolean("ok")){
+                        issue(if(result.optBoolean("queued"))"反馈已保存在本机，联网后自动发送。" else "反馈已收到：${result.optString("id")}")
+                        values.clear();files=emptyList()
+                    }else issue(if(result.optString("error")=="INVALID_FEEDBACK")"请填写反馈内容。" else "提交失败，请检查附件后重试。")
+                }else{
+                    val result=vm.graph.remote.call("action",JSONObject().put("action",item.optString("action")).put("values",JSONObject(values)))
+                    result.optJSONObject("page")?.let{parents=parents+page;page=it;values.clear()}
+                }
+            }finally{busy=false}
+        }
+    }
+    ProductPage(page.optString("title","更多"),vm){
+        val items=page.optJSONArray("items")?:JSONArray()
+        RemoteItems(items,values,files,busy,::activate,{images.launch("image/*")},{logs.launch(arrayOf("application/zip"))},{f->files=files-f})
+        if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
+    if(message.isNotEmpty())AlertDialog(onDismissRequest={message=""},text={Text(message)},confirmButton={TextButton(onClick={message=""}){LText("好")}})
+}
+
+@Composable
+private fun RemoteItems(items:JSONArray,values:MutableMap<String,String>,files:List<RemoteFile>,busy:Boolean,activate:(JSONObject)->Unit,images:()->Unit,logs:()->Unit,remove:(RemoteFile)->Unit){
+    for(i in 0 until items.length()){
+        val item=items.optJSONObject(i)?:continue;val id=item.optString("id","field$i");val title=item.optString("title")
+        when(item.optString("type")){
+            "group"->ProductSection(title){RemoteItems(item.optJSONArray("items")?:JSONArray(),values,files,busy,activate,images,logs,remove)}
+            "text","result"->Text(item.optString("text"),modifier=Modifier.padding(16.dp))
+            "input","multiline","number"->OutlinedTextField(value=values[id].orEmpty(),onValueChange={if(it.length<=10000)values[id]=it},label={Text(title)},singleLine=item.optString("type")!="multiline",minLines=if(item.optString("type")=="multiline")5 else 1,modifier=Modifier.fillMaxWidth().padding(vertical=6.dp),enabled=!busy)
+            "toggle"->Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(title);Switch(values[id]=="true",onCheckedChange={values[id]=it.toString()},enabled=!busy)}
+            "select"->ProductSection(title){val options=item.optJSONArray("options")?:JSONArray();for(j in 0 until options.length()){val option=options.getJSONObject(j);TextButton(onClick={values[id]=option.optString("value")},enabled=!busy){Text((if(values[id]==option.optString("value"))"✓ " else "")+option.optString("title"))}}}
+            "attachments"->ProductSection(title){
+                Row{
+                    TextButton(onClick=images,enabled=!busy&&files.count{it.kind=="screenshot"}<3){LText("添加截图")}
+                    TextButton(onClick=logs,enabled=!busy&&files.none{it.kind=="diagnostic"}){LText("诊断文件")}
+                }
+                files.forEach{f->
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
+                        if(f.kind=="screenshot")coil.compose.AsyncImage(model=File(f.path),contentDescription="所选截图",modifier=Modifier.size(58.dp))
+                        else Text("诊断文件",Modifier.padding(10.dp))
+                        TextButton(onClick={remove(f)},enabled=!busy){LText("移除")}
+                    }
+                }
+            }
+            "button"->if(item.optString("capability")=="feedback.submit")Button(onClick={activate(item)},enabled=!busy,modifier=Modifier.fillMaxWidth().padding(vertical=10.dp)){Text(title)}else ProductSection{SettingsRow(title,onClick={activate(item)},enabled=!busy)}
+            "loading"->LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+    }
+}

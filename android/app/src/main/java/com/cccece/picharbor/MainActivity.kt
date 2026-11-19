@@ -63,6 +63,7 @@ class MainActivity:ComponentActivity() {
     }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        model.graph.remote.start()
         model.restoreNavigation(savedInstanceState?.getString("mobile_navigation"))
         enableEdgeToEdge()
         model.proxyFilePicker={proxyFile.launch(arrayOf("*/*"))}
