@@ -340,6 +340,7 @@ struct DiagnosticsView: View {
 }
 
 private struct AboutView: View {
+    @EnvironmentObject private var model: HarborModel
     @ObservedObject private var remote = RemoteServices.shared
     @ObservedObject private var language = LanguagePreferences.shared
     var body: some View {
@@ -364,6 +365,7 @@ private struct AboutView: View {
                 }
             }
         }.navigationTitle(L10n.text("关于")).navigationBarTitleDisplayMode(.inline)
+        .task { await remote.refresh(model, force: true) }
     }
 }
 

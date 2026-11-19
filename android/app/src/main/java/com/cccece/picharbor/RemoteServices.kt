@@ -54,6 +54,9 @@ class RemoteServices(private val graph:AppGraph) {
     private val gate=Mutex()
     private val started=java.util.concurrent.atomic.AtomicBoolean(false)
     val startupUi=MutableStateFlow<JSONObject?>(null)
+    val dialogUi=MutableStateFlow<JSONObject?>(null)
+    private val dialogGate=Mutex()
+    private val dialogs=java.util.ArrayDeque<JSONObject>()
     val hintUi=MutableStateFlow("")
     val update=MutableStateFlow<JSONObject?>(null)
     val revision=MutableStateFlow(0)
@@ -69,14 +72,37 @@ class RemoteServices(private val graph:AppGraph) {
     }
     fun start(){if(!started.compareAndSet(false,true))return;graph.scope.launch {
         graph.startup.await()
-        val result=call("startup");startupUi.value=result.optJSONObject("ui")
+        call("sync")
+        val result=call("startup");result.optJSONObject("ui")?.let{if(it.optString("type")=="dialog")showDialog(it) else startupUi.value=it}
         resolve()
-        call("sync");resolve();update.value=call("update").optJSONObject("update");revision.value++
+        resolve();update.value=call("update").optJSONObject("update");revision.value++
         graph.scope.launch { while(isActive) { runCatching { snapshotFacts(); if(graph.visible.get())call("lifecycle",JSONObject().put("phase","heartbeat")); call("flush") }; delay(60_000) } }
         val work=androidx.work.PeriodicWorkRequestBuilder<RemoteFeedbackWorker>(15,java.util.concurrent.TimeUnit.MINUTES).setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()).build()
         androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork("remote-feedback",androidx.work.ExistingPeriodicWorkPolicy.KEEP,work)
         graph.preferences.flow.map{it.account}.distinctUntilChanged().drop(1).collect{resolve()}
     }}
+    suspend fun showDialog(value:JSONObject)=dialogGate.withLock {
+        if(dialogs.none{it.optString("id")==value.optString("id")&&it.optInt("revision",1)==value.optInt("revision",1)})dialogs.addLast(value)
+        if(dialogUi.value==null)advanceDialog()
+    }
+    private suspend fun advanceDialog(){
+        while(dialogs.isNotEmpty()){
+            val result=call("dialog_prepare",JSONObject().put("dialog",dialogs.first))
+            if(result.optString("status")=="already_seen"){dialogs.removeFirst();continue}
+            dialogUi.value=result.optJSONObject("dialog");return
+        }
+        dialogUi.value=null
+    }
+    suspend fun completeDialog(dialog:JSONObject,button:JSONObject)=dialogGate.withLock {
+        if(dialogUi.value!==dialog)return@withLock
+        val result=call("dialog_complete",JSONObject().put("dialog",dialog).put("button",button.optString("id")))
+        if(!result.optBoolean("ok"))return@withLock
+        dialogUi.value=null
+        if(dialogs.isNotEmpty())dialogs.removeFirst()
+        val url=button.optString("url")
+        if(url.startsWith("https://"))withContext(Dispatchers.Main){context.openProductIntent(Intent(Intent.ACTION_VIEW,Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}
+        advanceDialog()
+    }
     suspend fun resolve(){
         val settings=graph.preferences.rawGet();val values=JSONObject()
         settings.javaClass.declaredFields.filter{!java.lang.reflect.Modifier.isStatic(it.modifiers)}.forEach{f->runCatching{f.isAccessible=true;values.put(f.name,JSONObject.wrap(f.get(settings)))}}
@@ -147,6 +173,14 @@ class RemoteFeedbackWorker(context:Context,parameters:androidx.work.WorkerParame
 
 @Composable
 fun RemoteAlerts(vm:HarborViewModel){
+    val dialog by vm.graph.remote.dialogUi.collectAsState()
+    val dialogScope=rememberCoroutineScope()
+    var completing by remember(dialog){mutableStateOf(false)}
+    dialog?.let{value->
+        val buttons=value.getJSONArray("buttons")
+        fun finish(button:JSONObject){if(!completing){completing=true;dialogScope.launch{try{vm.graph.remote.completeDialog(value,button)}finally{completing=false}}}}
+        AlertDialog(onDismissRequest={},title={Text(value.optString("title"))},text={Text(value.optString("message"))},confirmButton={TextButton(onClick={finish(buttons.getJSONObject(0))},enabled=!completing){Text(buttons.getJSONObject(0).optString("title"))}},dismissButton={if(buttons.length()>1)TextButton(onClick={finish(buttons.getJSONObject(1))},enabled=!completing){Text(buttons.getJSONObject(1).optString("title"))}})
+    }
     val start by vm.graph.remote.startupUi.collectAsState();val hint by vm.graph.remote.hintUi.collectAsState()
     if(start?.has("items")==true)androidx.compose.ui.window.Dialog(onDismissRequest={vm.graph.remote.startupUi.value=null},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)){
         Surface(Modifier.fillMaxSize()){Column{TextButton(onClick={vm.graph.remote.startupUi.value=null},modifier=Modifier.align(androidx.compose.ui.Alignment.End)){LText("关闭")};Box(Modifier.weight(1f)){RemoteMoreScreen(vm,start)}}}
@@ -205,7 +239,7 @@ fun RemoteMoreScreen(vm:HarborViewModel,initialPage:JSONObject?=null){
     }}
     val images=rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()){uris->uris.take(3).forEach{choose(it,"screenshot")}}
     val logs=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->uri?.let{choose(it,"diagnostic")}}
-    LaunchedEffect(revision){if(initialPage!=null)page=initialPage else if(parents.isEmpty()&&values.isEmpty()){val r=vm.graph.remote.call("more");r.optJSONObject("page")?.let{page=it}}}
+    LaunchedEffect(revision){if(initialPage!=null)page=initialPage else if(parents.isEmpty()&&values.isEmpty()){val r=vm.graph.remote.call("more");r.optJSONObject("page")?.let{if(it.optString("type")=="dialog")vm.graph.remote.showDialog(it) else page=it}}}
     androidx.activity.compose.BackHandler(parents.isNotEmpty()){page=parents.last();parents=parents.dropLast(1)}
     fun activate(item:JSONObject){
         if(busy)return
@@ -213,6 +247,7 @@ fun RemoteMoreScreen(vm:HarborViewModel,initialPage:JSONObject?=null){
         scope.launch {
             busy=true
             try{
+                if(item.optString("type")=="dialog"){vm.graph.remote.showDialog(item);return@launch}
                 if(item.optString("capability")=="feedback.submit"){
                     val result=vm.graph.remote.feedback(values,files)
                     if(result.optBoolean("ok")){
@@ -221,7 +256,7 @@ fun RemoteMoreScreen(vm:HarborViewModel,initialPage:JSONObject?=null){
                     }else issue(if(result.optString("error")=="INVALID_FEEDBACK")"请填写反馈内容。" else "提交失败，请检查附件后重试。")
                 }else{
                     val result=vm.graph.remote.call("action",JSONObject().put("action",item.optString("action")).put("values",JSONObject(values)))
-                    result.optJSONObject("page")?.let{parents=parents+page;page=it;values.clear()}
+                    result.optJSONObject("page")?.let{if(it.optString("type")=="dialog")vm.graph.remote.showDialog(it) else {parents=parents+page;page=it;values.clear()}}
                 }
             }finally{busy=false}
         }
@@ -260,7 +295,7 @@ private fun RemoteItems(items:JSONArray,values:MutableMap<String,String>,files:L
                     }
                 }
             }
-            "button"->if(item.optString("capability")=="feedback.submit")Button(onClick={activate(item)},enabled=!busy,modifier=Modifier.fillMaxWidth().padding(vertical=10.dp)){Text(title)}else ProductSection{SettingsRow(title,onClick={activate(item)},enabled=!busy)}
+            "button","dialog"->if(item.optString("capability")=="feedback.submit")Button(onClick={activate(item)},enabled=!busy,modifier=Modifier.fillMaxWidth().padding(vertical=10.dp)){Text(title)}else ProductSection{SettingsRow(title,onClick={activate(item)},enabled=!busy)}
             "loading"->LinearProgressIndicator(Modifier.fillMaxWidth())
         }
     }
