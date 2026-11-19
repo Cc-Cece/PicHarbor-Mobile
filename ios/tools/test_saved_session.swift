@@ -5,7 +5,8 @@ struct HarborError: Error { init(_ code: String) {} }
 
 @main
 struct SavedSessionTests {
-    static func main() throws {
+    @MainActor
+    static func main() async throws {
         // These integration cases use only an ephemeral GitHub runner's keychain.
         guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" else {
             fatalError("Run on an isolated CI runner, never a user's keychain")
@@ -55,6 +56,34 @@ struct SavedSessionTests {
         UserDefaults.standard.removeObject(forKey: "activeAccount")
         let recovered = try KeychainStore.load()
         precondition(recovered == alice)
+        // Exercise the production startup coordinator with a cold routing core.
+        // Authentication uses the real test Keychain and requires a ready route,
+        // just like ProxyManager.sharedDecision after the mobile merge.
+        var routingReady = false
+        var events: [String] = []
+        let coldStart = await SessionStartup.restore(prepareRouting: {
+            events.append("core_probe")
+            await Task.yield()
+            routingReady = true
+            events.append("routing_ready")
+            return true
+        }, authenticate: {
+            precondition(routingReady, "Cold launch must not authenticate before proxy selection is available")
+            events.append("authenticate")
+            return (try? KeychainStore.load()) == "alice-secret"
+        })
+        precondition(coldStart, "Cold launch recovers saved credentials on its first attempt")
+        precondition(events == ["core_probe", "routing_ready", "authenticate"])
+        var authCalls = 0
+        let unavailable = await SessionStartup.restore(prepareRouting: { false }, authenticate: { authCalls += 1; return true })
+        precondition(!unavailable && authCalls == 0, "Unavailable core must not start or invalidate authentication")
+        let rejected = await SessionStartup.restore(prepareRouting: { true }, authenticate: { false })
+        precondition(!rejected, "Startup must preserve a real authentication failure")
+        routingReady = false
+        let relaunched = await SessionStartup.restore(prepareRouting: {
+            routingReady = true; return true
+        }, authenticate: { routingReady && (try? KeychainStore.load()) == "alice-secret" })
+        precondition(relaunched, "A second cold launch also restores without manual selection")
         // Pre-fix installs have named credentials but no durable selector.
         SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "PicHarbor.session"] as CFDictionary)
         let migrated = try KeychainStore.load()
@@ -72,6 +101,6 @@ struct SavedSessionTests {
         precondition(legacyAccounts.isEmpty, "Legacy slot must not appear as a named account")
         let legacy = try KeychainStore.load()
         precondition(legacy == "legacy-secret", "Original credential slot still migrates")
-        print("PASS: 25 saved-session selection, recovery, logout and Keychain checks")
+        print("PASS: 31 saved-session, cold-start ordering and Keychain checks")
     }
 }

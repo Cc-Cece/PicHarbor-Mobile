@@ -36,6 +36,8 @@ Android `2.0.0-alpha.17` / iOS `0.2.40` 优化传输到电脑页面，突出扫�
 
 iOS `0.2.41` 修复冷启动丢失当前账号选择及临时连接失败后不再恢复的问题，见 [账号恢复记录](specs/IOS-SAVED-SESSION-2026-11-19.md)。只编译、不安装。
 
+iOS `0.2.42` 进一步修正合并后的启动顺序：共享核心代理选路就绪后，才恢复保存账号，见 [启动顺序修复](specs/IOS-STARTUP-ORDER-2026-11-19.md)。
+
 Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
 
 ## Development

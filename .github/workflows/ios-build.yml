@@ -89,7 +89,7 @@ jobs:
 
       - name: Check saved account recovery
         run: |
-          swiftc Sources/Core/SavedSessionPolicy.swift Sources/Core/KeychainStore.swift tools/test_saved_session.swift -o "$RUNNER_TEMP/saved-session-tests"
+          swiftc Sources/Core/SavedSessionPolicy.swift Sources/Core/SessionStartup.swift Sources/Core/KeychainStore.swift tools/test_saved_session.swift -o "$RUNNER_TEMP/saved-session-tests"
           "$RUNNER_TEMP/saved-session-tests"
 
       - name: Build unsigned .app

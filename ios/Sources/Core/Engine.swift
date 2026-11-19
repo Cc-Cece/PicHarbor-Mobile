@@ -151,8 +151,8 @@ final class Engine: ObservableObject {
             let info = try await invoke("probe")
             for key in ["python", "tls", "sqlite"] { runtime[key] = info[key] as? String }
         } catch { message = error.localizedDescription; if !ready { booted = false } }
-        busy = false
-        if ready { _ = await restoreSavedSession() }
+        // Runtime boot is local-only. HarborModel must prepare shared-core
+        // proxy routing before attempting any saved-account authentication.
     }
 
     /// A failed launch connection must not permanently look like logout.
@@ -166,14 +166,18 @@ final class Engine: ObservableObject {
         busy = true
         defer { busy = false }
         do {
+            MobileDiagnostics.shared.record("session.restore", fields: ["stage": "credential"])
             guard let credential = try KeychainStore.load() else {
                 message = L10n.text("运行环境检查通过，请连接 Google 账号。")
                 return false
             }
             try await connect(credential)
+            MobileDiagnostics.shared.record("session.restore", fields: ["state": "connected"])
             return true
         } catch {
-            restoreBlocked = !SavedSessionPolicy.retryable((error as? HarborError)?.code ?? "ENGINE_ERROR")
+            let code = (error as? HarborError)?.code ?? "ENGINE_ERROR"
+            restoreBlocked = !SavedSessionPolicy.retryable(code)
+            MobileDiagnostics.shared.record("session.restore", fields: ["state": "failed", "error_code": code])
             message = error.localizedDescription
             return false
         }

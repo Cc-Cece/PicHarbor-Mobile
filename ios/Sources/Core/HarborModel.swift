@@ -305,8 +305,6 @@ final class HarborModel: ObservableObject {
             assetIndex = Dictionary(uniqueKeysWithValues: try await repository.load(AssetSnapshot.self, kind: "asset").map { ($0.id, $0) })
             do { accounts = try KeychainStore.accounts(); credentialStorageAvailable = true }
             catch { accounts = []; credentialStorageAvailable = false; engine.message = error.localizedDescription }
-            try await loadSettings()
-            refreshRecovery()
             // Unified core (overnight unification): probe once per boot.
             // When the core is unavailable (harbor_core not yet synced)
             // every adapter call is a no-op and jobs fail with a
@@ -314,16 +312,24 @@ final class HarborModel: ObservableObject {
             // decisions without the core — there is no legacy path.
             // restore() marks in-flight core tasks interrupted; the
             // native restore loop below aligns the native jobs.
-            _ = await coreAdapter.probe()
-            _ = await coreAdapter.restore()
             // Proxy validation goes through the core when it knows the
             // action; nil means "core does not know it yet" and routing
             // proceeds on the native checks alone. No credentials are
             // ever sent to the core (see HarborCoreAdapter.validateProxy).
-            ProxyManager.shared.coreValidator = { [weak self] preferences, primaryPort in
-                guard let self else { return false }
-                return await self.coreAdapter.validateProxy(preferences: preferences, primaryPort: primaryPort) ?? false
-            }
+            await SessionStartup.restore(prepareRouting: {
+                guard await self.coreAdapter.probe() else { return false }
+                _ = await self.coreAdapter.restore()
+                ProxyManager.shared.coreValidator = { [weak self] preferences, primaryPort in
+                    guard let self else { return false }
+                    return await self.coreAdapter.validateProxy(preferences: preferences, primaryPort: primaryPort) ?? false
+                }
+                MobileDiagnostics.shared.record("session.startup", fields: ["stage": "routing_ready"])
+                return true
+            }, authenticate: { await self.engine.restoreSavedSession() })
+            // Account-scoped settings and URLSession task disposition must see
+            // the restored identity, not the pre-authentication empty account.
+            try await loadSettings()
+            refreshRecovery()
             let capabilities = try await engine.invoke("capabilities")
             applePairAvailable = capabilities["apple_pair"] as? Bool == true
             transfer.activate()
