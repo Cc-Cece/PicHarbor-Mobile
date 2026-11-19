@@ -31,7 +31,10 @@ struct RemoteMoreView: View {
         .sheet(isPresented: $generatingDiagnostic) {
             NavigationStack {
                 MobileDiagnosticsView(onAttach: { url in
-                    guard !files.contains(where: { $0.kind == "diagnostic" }) else { return }
+                    guard generatingDiagnostic, !files.contains(where: { $0.kind == "diagnostic" }) else {
+                        try? FileManager.default.removeItem(at: url)
+                        return
+                    }
                     files.append(RemoteAttachment(path: url.path, kind: "diagnostic", mime: "application/zip"))
                 })
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("取消")) { generatingDiagnostic = false } } }
