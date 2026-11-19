@@ -61,7 +61,7 @@ PicHarbor 内置 [SelfRefreshKit](https://github.com/Cc-Cece/SelfRefreshKit)。*
 4. 在系统快捷指令中配置自动化：连接 LocalDevVPN → 运行 PicHarbor 的「刷新应用签名描述文件」→ 断开 LocalDevVPN。
 
 > [!TIP]
-> 建议每天自动执行，并选择「立即运行」。续签需要网络、可用的 Apple 会话和本地回环 VPN；完成首次配置后仍应定期查看最近续签结果。
+> 建议每 5 天自动续签，并选择「立即运行」。从上次成功续签起，间隔不能超过 7 天，否则需要重新连接电脑恢复签名安装。续签需要网络、可用的 Apple 会话和本地回环 VPN，请定期检查最近续签结果。
 
 ## 构建
 

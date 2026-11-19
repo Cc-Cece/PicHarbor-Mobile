@@ -61,7 +61,7 @@ PicHarbor integrates [SelfRefreshKit](https://github.com/Cc-Cece/SelfRefreshKit)
 4. Create a Shortcuts automation: connect LocalDevVPN → run PicHarbor's Refresh App Provisioning Profile action → disconnect LocalDevVPN.
 
 > [!TIP]
-> Schedule it daily with Run Immediately. Renewal still requires network access, a valid Apple session, and the local loopback VPN. Check the latest renewal result periodically after setup.
+> Renew every 5 days with Run Immediately enabled. Do not exceed 7 days since the last successful renewal; otherwise, reconnect to a computer to restore signing and installation. Renewal requires network access, a valid Apple session, and the local loopback VPN. Check the latest renewal result periodically.
 
 ## Build
 

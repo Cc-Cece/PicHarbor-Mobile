@@ -81,7 +81,7 @@ Use **Optional Actions → Configure Background Auto-Refresh Shortcut** in the a
 You can also create the automation manually:
 
 1. Open **Shortcuts → Automation** and create a **Time of Day** personal automation.
-2. Choose a convenient time, repeat it daily, and select **Run Immediately** so routine execution does not wait for confirmation.
+2. Schedule renewal every **5 days** at a convenient time and select **Run Immediately** so routine execution does not wait for confirmation. Do not exceed **7 days** since the last successful renewal; otherwise, reconnect to a computer to restore signing and installation.
 3. Add these actions in order:
 
    ```text
@@ -101,7 +101,7 @@ You can also create the automation manually:
 
 The action supports background execution; adding an **Open PicHarbor** action is unnecessary. Initial authorization, renewed Apple authentication, or verification codes may still require interaction. Resolve conflicts with another VPN before testing LocalDevVPN.
 
-A daily schedule leaves time to recover from a missed or failed run. Do not schedule your only renewal for the final day. iOS execution conditions still affect automation, so check the results occasionally.
+A five-day renewal interval leaves time to recover from a missed or failed run before the seven-day limit. Count from the last successful renewal, not the last automation trigger. iOS execution conditions still affect automation, so check the results occasionally.
 
 ## 6. Troubleshooting
 
@@ -115,7 +115,7 @@ A daily schedule leaves time to recover from a missed or failed run. Do not sche
 | Remaining validity keeps decreasing | Check the latest successful renewal and any error, then renew manually; an enabled automation alone does not confirm success |
 | Is a computer still needed every week? | Not for normal renewal; use it again if pairing or the signing environment fails and cannot be restored on the phone |
 | Is renewal the same as updating the app? | No. Routine renewal extends the current installation's validity; installing a newer IPA updates the app |
-| App expired and no longer opens | Check whether its shortcut can still run and inspect the result; if recovery fails, use computer-assisted installation while preserving existing app data where possible |
+| More than 7 days have passed without successful renewal and the app has expired | Reconnect to a computer to restore signing and installation, preserving existing app data where possible |
 
 ## 7. Completion Checklist
 
@@ -124,7 +124,7 @@ A daily schedule leaves time to recover from a missed or failed run. Do not sche
 - [ ] LocalDevVPN and Health Check pass.
 - [ ] At least one on-device manual renewal succeeded and advanced the expiration time.
 - [ ] The shortcut runs successfully by hand and targets PicHarbor.
-- [ ] Daily automation is enabled, and an actual scheduled renewal result has been checked.
+- [ ] Renewal every 5 days is configured, the interval stays within 7 days, and an actual scheduled renewal result has been checked.
 
 ## References
 
