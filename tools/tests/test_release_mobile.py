@@ -115,6 +115,14 @@ class ReleaseTests(unittest.TestCase):
         folder,_=self.inputs();(folder/'app-release.apk').write_bytes(b'changed')
         with self.assertRaisesRegex(ValueError,'checksum mismatch'):self.assemble(folder)
 
+    def test_github_artifact_directory_named_ipa_is_not_a_package(self):
+        folder,_=self.inputs()
+        destination=folder/'PicHarbor-0.2.42-1.ipa'/'dist';destination.mkdir(parents=True)
+        (folder/'app.ipa').rename(destination/'app.ipa')
+        (folder/'BUILD-ios.json').rename(destination/'BUILD-ios.json')
+        self.assemble(folder)
+        self.assertTrue((self.root/'output/PicHarbor-iOS-v1.0.0-unsigned.ipa').exists())
+
     def test_other_source_build_is_rejected(self):
         folder,_=self.inputs();path=folder/'BUILD-ios.json';metadata=json.loads(path.read_text());metadata['source']='b'*40;path.write_text(json.dumps(metadata))
         with self.assertRaisesRegex(ValueError,'does not match this source'):self.assemble(folder)

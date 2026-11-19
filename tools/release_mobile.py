@@ -78,7 +78,7 @@ def record(platform, package, output):
 
 
 def one(folder, pattern):
-    values = list(folder.rglob(pattern))
+    values = [path for path in folder.rglob(pattern) if path.is_file()]
     if len(values) != 1:
         raise ValueError(f'Expected one {pattern}; found {len(values)}')
     return values[0]
