@@ -1,7 +1,9 @@
 import SwiftUI
 
 struct MobileDiagnosticsView: View {
+    var onAttach: ((URL) -> Void)? = nil
     @EnvironmentObject private var model: HarborModel
+    @Environment(\.dismiss) private var dismiss
     @State private var all = true
     @State private var from = Date()
     @State private var to = Date()
@@ -22,13 +24,24 @@ struct MobileDiagnosticsView: View {
                     DatePicker(L10n.text("开始日期"), selection: $from, displayedComponents: .date)
                     DatePicker(L10n.text("结束日期"), selection: $to, in: from..., displayedComponents: .date)
                 }
-                Button(L10n.text("准备导出")) {
+                Button(onAttach == nil ? L10n.text("准备导出") : L10n.text("生成并添加")) {
                     preparing = true; error = ""; archive = nil
                     Task {
                         do {
                             let calendar = Calendar.current
-                            archive = try await MobileDiagnostics.shared.export(from: all ? nil : calendar.startOfDay(for: from),
+                            let generated = try await MobileDiagnostics.shared.export(from: all ? nil : calendar.startOfDay(for: from),
                                 to: all ? nil : calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to)), summary: model.diagnostics)
+                            if let onAttach {
+                                let size = try generated.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                                guard size > 0 && size <= 5 * 1024 * 1024 else {
+                                    try? FileManager.default.removeItem(at: generated)
+                                    error = L10n.text("无法生成诊断文件，请缩小日期范围后重试。")
+                                    preparing = false
+                                    return
+                                }
+                                onAttach(generated)
+                                dismiss()
+                            } else { archive = generated }
                         } catch { self.error = L10n.text("导出失败，请重试。") }
                         preparing = false
                     }

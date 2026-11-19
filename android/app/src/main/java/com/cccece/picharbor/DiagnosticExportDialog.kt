@@ -15,7 +15,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 
 @Composable
-fun DiagnosticExportDialog(visible:Boolean=true,onDismiss:()->Unit,onExport:(LogRange)->Unit) {
+fun DiagnosticExportDialog(visible:Boolean=true,onDismiss:()->Unit,confirmLabel:String="导出",onExport:(LogRange)->Unit) {
     val zone=remember{ZoneId.systemDefault()}
     var custom by rememberSaveable{mutableStateOf(false)}
     var calendar by rememberSaveable{mutableStateOf(false)}
@@ -48,6 +48,6 @@ fun DiagnosticExportDialog(visible:Boolean=true,onDismiss:()->Unit,onExport:(Log
             Helper("日期按 ${zone.id} 计算。日志最多保留 14 天或 64 MiB，较早记录可能已自动覆盖。")
             Helper("已脱敏；包含运行信息和文件名，不包含照片或视频本体、账号、密码及登录凭据。")
         }
-        Button(enabled=!closing&&(!custom||range!=null),onClick={val selected=if(custom)range!! else LogRange(zone=zone.id);dismiss{onExport(selected)}},modifier=Modifier.fillMaxWidth()){LText("导出")}
+        Button(enabled=!closing&&(!custom||range!=null),onClick={val selected=if(custom)range!! else LogRange(zone=zone.id);dismiss{onExport(selected)}},modifier=Modifier.fillMaxWidth()){LText(confirmLabel)}
     }
 }

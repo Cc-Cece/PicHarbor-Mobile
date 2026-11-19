@@ -1515,5 +1515,6 @@
   "提交失败，请检查附件后重试。": "Unable to send. Check the attachments and try again.",
   "反馈已收到：{0}": "Feedback received: {0}",
   "从文件选择": "Choose a file",
-  "无法生成诊断文件，请缩小日期范围后重试。": "Unable to create the diagnostic file. Try a shorter date range."
+  "无法生成诊断文件，请缩小日期范围后重试。": "Unable to create the diagnostic file. Try a shorter date range.",
+  "生成并添加": "Generate and attach"
 }

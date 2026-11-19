@@ -205,7 +205,7 @@ fun RemoteMoreScreen(vm:HarborViewModel,initialPage:JSONObject?=null){
         RemoteItems(items,values,files,busy,::activate,{images.launch("image/*")},{diagnosticDialog=true},{logs.launch(arrayOf("application/zip"))},{f->files=files-f})
         if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
     }}
-    DiagnosticExportDialog(visible=diagnosticDialog,onDismiss={diagnosticDialog=false},onExport={range->diagnosticDialog=false;generateDiagnostic(range)})
+    DiagnosticExportDialog(visible=diagnosticDialog,onDismiss={diagnosticDialog=false},confirmLabel="生成并添加",onExport={range->diagnosticDialog=false;generateDiagnostic(range)})
     if(message.isNotEmpty())AlertDialog(onDismissRequest={message=""},text={LText(message)},confirmButton={TextButton(onClick={message=""}){LText("好")}})
 }
 

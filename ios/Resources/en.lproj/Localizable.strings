@@ -104,6 +104,7 @@
 "仍要重新上传" = "Upload again anyway";
 "仍要重新上传？" = "Upload again anyway?";
 "从图片识别" = "Read from image";
+"从文件选择" = "Choose a file";
 "从相册导出资源" = "Export from Photos";
 "从相册选择二维码" = "Choose QR Code from Photos";
 "从链接或文件导入，任选一种。一次使用一份配置，订阅需手动更新。" = "Import from a URL or file. Use one configuration at a time. Update subscriptions manually.";
@@ -474,6 +475,7 @@
 "无法查看照片" = "Photo unavailable";
 "无法添加截图。" = "Unable to add the screenshot.";
 "无法添加此诊断文件。" = "Unable to add this diagnostic file.";
+"无法生成诊断文件，请缩小日期范围后重试。" = "Unable to create the diagnostic file. Try a shorter date range.";
 "无法访问安全凭据存储。" = "Secure credential storage is unavailable.";
 "无法读写任务数据库，请检查剩余空间。" = "Task storage could not be read or written. Check free space.";
 "无法读取 Live Photo 关键帧，已保留原件。" = "The Live Photo key frame could not be read. Your original is kept.";
@@ -657,6 +659,7 @@
 "版本保留" = "Versions to keep";
 "版本策略" = "Version settings";
 "现存覆盖" = "Retained coverage";
+"生成并添加" = "Generate and attach";
 "生效策略" = "Effective policy";
 "用数据线连接，并打开电脑上的 PicHarbor。" = "Connect with a cable and open PicHarbor on the computer.";
 "电脑" = "Computer";

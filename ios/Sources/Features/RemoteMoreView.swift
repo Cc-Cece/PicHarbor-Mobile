@@ -12,6 +12,7 @@ struct RemoteMoreView: View {
     @State private var files: [RemoteAttachment] = []
     @State private var selectedImages: [PhotosPickerItem] = []
     @State private var importing = false
+    @State private var generatingDiagnostic = false
     @State private var busy = false
     @State private var message = ""
     var body: some View {
@@ -26,6 +27,15 @@ struct RemoteMoreView: View {
             if !values.isEmpty || !files.isEmpty { return }
             let result = await remote.call(action == nil ? "more" : "action", action.map { ["action": $0] } ?? [:])
             page = result["page"] as? [String: Any] ?? [:]
+        }
+        .sheet(isPresented: $generatingDiagnostic) {
+            NavigationStack {
+                MobileDiagnosticsView(onAttach: { url in
+                    guard !files.contains(where: { $0.kind == "diagnostic" }) else { return }
+                    files.append(RemoteAttachment(path: url.path, kind: "diagnostic", mime: "application/zip"))
+                })
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("取消")) { generatingDiagnostic = false } } }
+            }.environmentObject(model)
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.zip], allowsMultipleSelection: false) { result in
             do {
@@ -73,7 +83,8 @@ struct RemoteMoreView: View {
         case "attachments":
             return AnyView(Section(title) {
                 PhotosPicker(selection: $selectedImages, maxSelectionCount: 3, matching: .images) { Label(L10n.text("添加截图"), systemImage: "photo") }.disabled(busy || files.filter { $0.kind == "screenshot" }.count >= 3)
-                Button { importing = true } label: { Label(L10n.text("诊断文件"), systemImage: "doc") }.disabled(busy || files.contains { $0.kind == "diagnostic" })
+                Button { generatingDiagnostic = true } label: { Label(L10n.text("诊断文件"), systemImage: "doc.badge.gearshape") }.disabled(busy || files.contains { $0.kind == "diagnostic" })
+                Button { importing = true } label: { Label(L10n.text("从文件选择"), systemImage: "folder") }.disabled(busy || files.contains { $0.kind == "diagnostic" })
                 ForEach(files) { file in HStack {
                     if file.kind == "screenshot", let image = UIImage(contentsOfFile: file.path) { Image(uiImage: image).resizable().scaledToFit().frame(width: 64, height: 64).accessibilityLabel(L10n.text("所选截图")) } else { Text(L10n.text("诊断文件")) }
                     Spacer()
