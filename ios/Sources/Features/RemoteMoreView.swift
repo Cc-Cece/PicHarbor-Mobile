@@ -20,12 +20,17 @@ struct RemoteMoreView: View {
     @State private var visible = false
     @State private var loadingAction: String?
     @State private var showActionProgress = false
+    private var displayedPage: [String: Any] {
+        if !page.isEmpty { return page }
+        if let providedPage { return providedPage }
+        return action == nil ? remote.morePage : [:]
+    }
     var body: some View {
         List {
-            ForEach(Array((page["items"] as? [[String: Any]] ?? []).enumerated()), id: \.offset) { _, item in node(item) }
+            ForEach(Array((displayedPage["items"] as? [[String: Any]] ?? []).enumerated()), id: \.offset) { _, item in node(item) }
             if busy && loadingAction == nil { ProgressView() }
         }
-        .navigationTitle(page["title"] as? String ?? L10n.text("更多"))
+        .navigationTitle(displayedPage["title"] as? String ?? L10n.text("更多"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $navigating) { RemoteMoreView(providedPage: nextPage) }
         .onAppear { visible = true; applyRootPage(remote.morePage) }
