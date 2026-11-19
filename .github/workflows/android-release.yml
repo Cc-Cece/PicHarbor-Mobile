@@ -1,0 +1,75 @@
+name: Android signed release build
+
+on:
+  workflow_call:
+    secrets:
+      PICHARBOR_MOBILE_KEYSTORE_BASE64:
+        required: true
+      PICHARBOR_MOBILE_STORE_PASSWORD:
+        required: true
+      PICHARBOR_MOBILE_KEY_PASSWORD:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./android/.github/actions/setup-build
+      - name: Load the existing release identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PICHARBOR_MOBILE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.PICHARBOR_MOBILE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.PICHARBOR_MOBILE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
+            echo '::error::Configure the three PICHARBOR_MOBILE signing secrets. Temporary keys are forbidden.'
+            exit 1
+          fi
+          umask 077
+          KEYSTORE_PATH="$RUNNER_TEMP/picharbor-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          printf 'PICHARBOR_KEYSTORE=%s\nPICHARBOR_STORE_PASSWORD=%s\nPICHARBOR_KEY_PASSWORD=%s\n' \
+            "$KEYSTORE_PATH" "$STORE_PASSWORD" "$KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Verify the pinned signing certificate and core sources
+        run: |
+          python tools/verify_signing.py --keystore "$PICHARBOR_KEYSTORE"
+          python tools/verify_engine.py
+      - name: Build and test the release APK
+        run: gradle :app:assembleRelease :app:testReleaseUnitTest :app:lintRelease "-PbuildPython=$(which python)" --console=plain
+      - name: Verify APK identity and bundled runtime
+        run: |
+          python tools/verify_signing.py --apk app/build/outputs/apk/release/app-release.apk
+          python tools/inspect_release.py
+          python ../tools/release_mobile.py record --platform android --package app/build/outputs/apk/release/app-release.apk --output dist/BUILD-android.json
+      - name: Package committed mobile and pinned proxy sources
+        run: python ../tools/package-mobile.py
+      - name: Upload verified release inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-signed-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/dist/BUILD-android.json
+            delivery/*-source.zip
+            delivery/*-source.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain exact-build obfuscation mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-symbols-${{ github.sha }}
+          path: android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove runner signing material
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/picharbor-release.jks"

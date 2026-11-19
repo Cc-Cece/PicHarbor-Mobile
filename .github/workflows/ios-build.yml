@@ -11,11 +11,12 @@ name: iOS Build (Unsigned IPA)
 on:
   push:
     branches: [main, feat/mobile-framework-parity]
-    paths: ['ios/**', '.github/workflows/ios-build.yml']
+    paths: ['ios/**', '.github/workflows/ios-build.yml', 'tools/release_mobile.py']
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
-  group: ios-build-${{ github.ref }}
+  group: ${{ github.workflow }}-ios-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -52,6 +53,11 @@ jobs:
 
       - name: Prepare pinned Python runtime and dependencies
         run: python tools/prepare_python.py
+
+      - name: Test the Python adapter offline
+        run: |
+          python -m pip install -r Python/requirements.lock
+          python -m unittest discover -s tests_python -v
 
       - name: Cache pinned proxy SDK
         uses: actions/cache@v4
@@ -133,12 +139,18 @@ jobs:
       - name: Verify packaged Python runtime
         run: python tools/inspect_ipa.py dist/*.ipa
 
+      - name: Record exact source and IPA checksum
+        env:
+          IPA: ${{ steps.package.outputs.ipa }}
+        run: python ../tools/release_mobile.py record --platform ios --package "dist/$IPA" --output dist/BUILD-ios.json
+
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.ipa }}
           path: |
             ios/dist/*.ipa
+            ios/dist/BUILD-ios.json
             ios/gpmc.lock.json
           if-no-files-found: error
           retention-days: 14

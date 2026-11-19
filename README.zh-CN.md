@@ -43,7 +43,7 @@
 | Android | Android 10+，ARM64 | APK；CI 生成带独立包名的 Debug 预览版 |
 | iOS | iOS 17+，iPhone | 未签名 IPA；首次通过电脑签名安装并配置 SelfRefreshKit |
 
-从 [GitHub Actions](https://github.com/Cc-Cece/PicHarbor-Mobile/actions) 的成功运行中下载对应平台的 Artifacts。构建产物有保留期限；正式签名 Android 包需使用既有发布密钥构建。
+从 [Releases](https://github.com/Cc-Cece/PicHarbor-Mobile/releases) 下载已发布的 APK 和未签名 IPA，或从 [GitHub Actions](https://github.com/Cc-Cece/PicHarbor-Mobile/actions) 的成功运行中下载预览产物。CI 产物有保留期限；Android 正式发布使用既有发布密钥。
 
 1. 安装后授予需要的照片访问权限。
 2. 连接 Google 账号，确认备份范围和上传方式。
@@ -118,6 +118,25 @@ xcodebuild -project PicHarbor.xcodeproj -scheme PicHarbor \
 ```
 
 该命令输出 `.app`；IPA 打包步骤见同一工作流。
+
+### 标签自动发布
+
+在已包含于 `main` 的提交上推送版本标签，即可构建并发布两端：
+
+```shell
+git switch main
+git pull --ff-only
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+每次发布使用新版本号。`v1.0.0-beta.1` 这类标签会发布为预发布版。合并发布标签独立于 Android 和 iOS 各自的应用版本，原生版本会写入 Release 说明及清单。
+
+[Mobile Release](.github/workflows/release.yml) 工作流验证提交属于 main，构建并检查签名 ARM64 APK 和未签名 IPA，全部成功后统一发布，并附上对应源码、`MANIFEST.json` 和 `SHA256SUMS.txt`。已有 Release 不覆盖。源码包排除本地项目文档，包含固定版本的 GPL 代理源码。
+
+Android 发布需要仓库 Secrets：`PICHARBOR_MOBILE_KEYSTORE_BASE64`、`PICHARBOR_MOBILE_STORE_PASSWORD`、`PICHARBOR_MOBILE_KEY_PASSWORD`；使用既有密钥别名 `picharbor` 和固定证书。iOS CI 不需要上传签名证书。
+
+验证构建时，手动运行 **Mobile Release** 并保持 **publish** 关闭；仅上传校验后的产物，不创建标签或 Release，仍需已有的发布签名 Secrets。
 
 ## 项目结构
 

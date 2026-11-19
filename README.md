@@ -43,7 +43,7 @@ The app has four main tabs: **Photos, Backup, Activity, and Settings**. Backgrou
 | Android | Android 10+, ARM64 | APK; CI produces a Debug preview with a separate application ID |
 | iOS | iOS 17+, iPhone | Unsigned IPA; use a computer for the initial signing, installation, and SelfRefreshKit setup |
 
-Download the platform artifact from a successful [GitHub Actions](https://github.com/Cc-Cece/PicHarbor-Mobile/actions) run. Artifacts expire after their retention period. A production-signed Android build requires the existing release key.
+Download published APKs and unsigned IPAs from [Releases](https://github.com/Cc-Cece/PicHarbor-Mobile/releases), or preview artifacts from a successful [GitHub Actions](https://github.com/Cc-Cece/PicHarbor-Mobile/actions) run. CI artifacts expire after their retention period. Android releases use the existing production signing key.
 
 1. Install the app and grant the photo access you need.
 2. Connect your Google account and choose the backup scope and upload method.
@@ -118,6 +118,25 @@ xcodebuild -project PicHarbor.xcodeproj -scheme PicHarbor \
 ```
 
 This produces an `.app`; see the same workflow for IPA packaging.
+
+### Tag-Based Releases
+
+Push a version tag on a commit already included in `main` to build and publish both platforms:
+
+```shell
+git switch main
+git pull --ff-only
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Use a new version for each release. Tags such as `v1.0.0-beta.1` produce prereleases. The combined release tag is independent of the native Android and iOS version numbers, which are recorded in the Release notes and manifest.
+
+The [Mobile Release](.github/workflows/release.yml) workflow checks main ancestry, builds and verifies a signed ARM64 APK and an unsigned IPA, then publishes both together with matching source, `MANIFEST.json`, and `SHA256SUMS.txt`. Existing releases are not overwritten. The source package excludes local project documents and includes the pinned GPL proxy source.
+
+Android signing requires repository Secrets `PICHARBOR_MOBILE_KEYSTORE_BASE64`, `PICHARBOR_MOBILE_STORE_PASSWORD`, and `PICHARBOR_MOBILE_KEY_PASSWORD`, using the existing keystore alias `picharbor` and pinned certificate. iOS does not require a signing certificate in CI.
+
+For a build-only check, run **Mobile Release** manually with **publish** disabled. It uploads verified artifacts without creating a tag or Release; release signing Secrets are still required.
 
 ## Project Structure
 

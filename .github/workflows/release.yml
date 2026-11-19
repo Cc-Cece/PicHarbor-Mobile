@@ -1,0 +1,116 @@
+name: Mobile Release
+run-name: Mobile Release ${{ github.ref_name }}
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing vX.Y.Z tag for publication; optional for build-only validation'
+        type: string
+        required: false
+      publish:
+        description: 'Publish Release (tag must point to this checkout and belong to main)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check release intent, main ancestry and immutable tag
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+          PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
+          KEYSTORE: ${{ secrets.PICHARBOR_MOBILE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.PICHARBOR_MOBILE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.PICHARBOR_MOBILE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KEYSTORE" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
+            echo '::error::Android release signing secrets are missing; no build or publication was started.'
+            exit 1
+          fi
+          TAG="$REQUESTED_TAG"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then TAG="$GITHUB_REF_NAME"; fi
+          FLAGS=()
+          if [[ "$PUBLISH" == true ]]; then FLAGS+=(--publish); fi
+          python tools/release_mobile.py preflight --tag "$TAG" "${FLAGS[@]}"
+          python -m unittest discover -s tools/tests -v
+          python tools/sync-core.py
+
+  android:
+    needs: prepare
+    uses: ./.github/workflows/android-release.yml
+    secrets:
+      PICHARBOR_MOBILE_KEYSTORE_BASE64: ${{ secrets.PICHARBOR_MOBILE_KEYSTORE_BASE64 }}
+      PICHARBOR_MOBILE_STORE_PASSWORD: ${{ secrets.PICHARBOR_MOBILE_STORE_PASSWORD }}
+      PICHARBOR_MOBILE_KEY_PASSWORD: ${{ secrets.PICHARBOR_MOBILE_KEY_PASSWORD }}
+
+  ios:
+    needs: prepare
+    uses: ./.github/workflows/ios-build.yml
+
+  publish:
+    needs: [prepare, android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-signed-${{ github.sha }}
+          path: release-input/android
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*.ipa'
+          path: release-input/ios
+      - name: Verify source, versions and checksums; assemble final assets
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: python tools/release_mobile.py assemble --tag "$RELEASE_TAG" --artifacts release-input --output release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-release-${{ github.sha }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish only after both platforms succeed
+        if: needs.prepare.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python tools/release_mobile.py preflight --tag "$RELEASE_TAG" --publish
+          FLAGS=(--latest)
+          CREATE_FLAGS=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then FLAGS=(--prerelease --latest=false); CREATE_FLAGS=(--prerelease); fi
+          gh release create "$RELEASE_TAG" release/* --verify-tag --draft \
+            --title "PicHarbor Mobile $RELEASE_TAG" --notes-file release-notes.md "${CREATE_FLAGS[@]}"
+          gh release edit "$RELEASE_TAG" --draft=false "${FLAGS[@]}"
