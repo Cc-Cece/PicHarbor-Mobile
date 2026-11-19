@@ -21,6 +21,8 @@ import SelfRefreshKit
     private var heartbeat: Task<Void, Never>?
     private var batchProjection: Task<Void, Never>?
     private var pendingBatches = Set<String>()
+    private var dialogQueue: [[String: Any]] = []
+    private var presentingDialog = false
     private let queue = DispatchQueue(label: "io.picharbor.remote")
     private var home: String { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("PicHarbor").path }
     func call(_ action: String, _ values: [String: Any] = [:]) async -> [String: Any] {
@@ -41,6 +43,7 @@ import SelfRefreshKit
         started = true
         await refresh(model, force: true)
         startupUI = await call("startup")["ui"] as? [String: Any]
+        if startupUI?["type"] as? String == "dialog", let dialog = startupUI { startupUI = nil; enqueueDialog(dialog) }
         model.settings = await resolve(model.settings, scope: model.account)
         _ = await model.saveSettings()
         update = await call("update")["update"] as? [String: Any]
@@ -112,7 +115,45 @@ import SelfRefreshKit
     }
     func lifecycle(_ phase: String) {
         guard started else { return }
+        if phase == "foreground" { Task { await presentDialogs() } }
         Task { _ = await call("lifecycle", ["phase": phase]) }
+    }
+    func enqueueDialog(_ dialog: [String: Any]) {
+        let id = dialog["id"] as? String, revision = dialog["revision"] as? Int ?? 1
+        guard !dialogQueue.contains(where: { $0["id"] as? String == id && ($0["revision"] as? Int ?? 1) == revision }) else { return }
+        dialogQueue.append(dialog)
+        Task { await presentDialogs() }
+    }
+    private func presentDialogs() async {
+        guard !presentingDialog else { return }
+        presentingDialog = true
+        defer { presentingDialog = false }
+        while let candidate = dialogQueue.first {
+            guard UIApplication.shared.applicationState == .active else { return }
+            let prepared = await call("dialog_prepare", ["dialog": candidate])
+            if prepared["status"] as? String == "already_seen" { dialogQueue.removeFirst(); continue }
+            guard let dialog = prepared["dialog"] as? [String: Any],
+                  let root = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive })?.windows.first(where: \.isKeyWindow)?.rootViewController else { return }
+            var presenter = root
+            while let presented = presenter.presentedViewController { presenter = presented }
+            guard !presenter.isBeingDismissed, !(presenter is UIAlertController) else {
+                Task { try? await Task.sleep(for: .milliseconds(500)); await presentDialogs() }
+                return
+            }
+            let buttons = dialog["buttons"] as? [[String: Any]] ?? []
+            let selected: [String: Any] = await withCheckedContinuation { continuation in
+                let alert = UIAlertController(title: dialog["title"] as? String, message: dialog["message"] as? String, preferredStyle: .alert)
+                for button in buttons {
+                    alert.addAction(UIAlertAction(title: button["title"] as? String, style: button["role"] as? String == "cancel" ? .cancel : .default) { _ in continuation.resume(returning: button) })
+                }
+                presenter.present(alert, animated: true)
+            }
+            let completed = await call("dialog_complete", ["dialog": dialog, "button": selected["id"] as? String ?? ""])
+            guard completed["ok"] as? Bool == true else { return }
+            dialogQueue.removeFirst()
+            if let address = selected["url"] as? String, let url = URL(string: address) { await UIApplication.shared.open(url) }
+            try? await Task.sleep(for: .milliseconds(400))
+        }
     }
     private func snapshotFacts(_ model: HarborModel) async {
         let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
