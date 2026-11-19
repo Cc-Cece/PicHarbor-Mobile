@@ -16,8 +16,8 @@ assert re.fullmatch(r'\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?', version), 'Une
 apk = out / f'PicHarbor-{version}-arm64.apk'
 shutil.copy2(root / 'app/build/outputs/apk/release/app-release.apk', apk)
 archive = out / f'PicHarbor-{version}-source.zip'
-allowed = {'app', 'gradle', 'tools', 'docs', '.github', 'localization'}
-top = {'build.gradle.kts', 'settings.gradle.kts', 'gradle.properties', 'gradlew', 'gradlew.bat', '.gitignore', '.gitattributes', 'README.md', 'README_ZH.md', 'NOTICE.md', 'LICENSE', 'gpmc.lock.json'}
+allowed = {'app', 'gradle', 'tools', '.github', 'localization'}
+top = {'build.gradle.kts', 'settings.gradle.kts', 'gradle.properties', 'gradlew', 'gradlew.bat', '.gitignore', '.gitattributes', 'NOTICE.md', 'LICENSE', 'gpmc.lock.json'}
 excluded = {'node_modules', 'build', '.gradle', '.kotlin', '.git', '.venv', '__pycache__', 'test-results'}
 
 
@@ -32,6 +32,8 @@ def source_files():
             for filename in sorted(files):
                 path = Path(directory) / filename
                 if path.suffix in {'.pyc', '.jks', '.keystore', '.dpapi', '.p12', '.pfx', '.log'} or path.name in {'local.properties', 'diagnostic-auth.txt'}:
+                    continue
+                if path.suffix.lower() in {'.md', '.mdx', '.rst', '.adoc'} and path.name not in {'NOTICE.md', 'LICENSE.md', 'LICENSES.md', 'diagnostic-format.md'}:
                     continue
                 yield path
 

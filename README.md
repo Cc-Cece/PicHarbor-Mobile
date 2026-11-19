@@ -1,53 +1,134 @@
+<div align="center">
+
+<img src="assets/brand/PicHarbor.png" width="96" height="96" alt="PicHarbor 图标" />
+
 # PicHarbor Mobile
 
-Native Android (Compose) and iOS (SwiftUI), maintained together. Shared business logic remains in [gpmc](https://github.com/Cc-Cece/gpmc).
+使用原生界面，将手机里的照片、视频和实况照片备份到 Google 相册。
 
-The product and page structure follow the frozen iOS `e0c495c9b23dba5b40eaff7e01b3acd597847096` baseline. See [the page contract](specs/PAGE-CONTRACT.md) and [migration record](specs/REPOSITORY-MIGRATION.md).
+[![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](android/)
+[![iOS](https://img.shields.io/badge/iOS-17%2B-000000?logo=apple&logoColor=white)](ios/)
+[![Android build](https://github.com/Cc-Cece/PicHarbor-Mobile/actions/workflows/android-build.yml/badge.svg)](https://github.com/Cc-Cece/PicHarbor-Mobile/actions/workflows/android-build.yml)
+[![iOS build](https://github.com/Cc-Cece/PicHarbor-Mobile/actions/workflows/ios-build.yml/badge.svg)](https://github.com/Cc-Cece/PicHarbor-Mobile/actions/workflows/ios-build.yml)
 
-本轮交付及构建安装记录见 [DELIVERY-2026-11-18.md](specs/DELIVERY-2026-11-18.md)。代码位于 `feat/mobile-framework-parity`，用户实机验收独立记录。
+[主要功能](#主要功能) · [开始使用](#开始使用) · [构建](#构建) · [项目结构](#项目结构)
 
-Android 原生体验优化基线为 `2.0.0-alpha.4`，见 [优化记录](specs/ANDROID-NATIVE-EXPERIENCE-2026-11-18.md)；保留已确认的页面框架。该轮按用户要求只编译，自动安装任务已停用。
+</div>
 
-Android 代理修复版本 `2.0.0-alpha.5` 解决带空格的代理节点名称测速失败及后续连接不可用，见 [修复和实机验证记录](specs/PROXY-FIX-2026-11-18.md)。用户已单独授权代理测试和安装；自动安装任务继续停用。
+PicHarbor Mobile 将 Android 与 iOS 客户端放在同一仓库维护。两端采用一致的主要功能和页面框架，分别使用 **Jetpack Compose / Material 3** 和 **SwiftUI** 实现原生交互。Google 相册协议与共享业务逻辑由 [gpmc](https://github.com/Cc-Cece/gpmc) 提供，并以经过内容校验的快照嵌入应用。
 
-Android `2.0.0-alpha.6` 增加活动左滑操作、照片状态标志底色，并将活动菜单改为仅图标，见 [界面调整记录](specs/ANDROID-UI-ADJUSTMENTS-2026-11-18.md)。
+## 主要功能
 
-Android `2.0.0-alpha.7` / iOS `0.2.31` 对齐备份卡片的整体速度、剩余大小和阶段计数，并在两端展示自动备份开启状态，见 [备份卡片调整记录](specs/BACKUP-DASHBOARD-PARITY-2026-11-18.md)。
+- **照片与实况备份**：浏览照片、视频和 Live Photo，选择备份范围，按媒体资源匹配实况处理方式。
+- **备份队列**：查看进度与阶段，暂停、继续、重试和管理记录；任务状态持久保存。
+- **相册归类**：根据本机相册组织备份内容，复用已建立的云端相册映射。
+- **应用内代理**：导入订阅或配置，选择节点并查看连接状态。
+- **传输到电脑**：扫描电脑二维码，在同一局域网内发送所选照片与视频，无需 Google 账号。
+- **原生设置与诊断**：账号管理、外观和多语言设置，以及由用户主动导出的本地诊断日志。
 
-Android `2.0.0-alpha.8` / iOS `0.2.32` 更新释放空间指引与同账号提示，统一 Android 底部选项面板，并支持点击自动备份状态直达开关，见 [界面调整记录](specs/NATIVE-OPTIONS-CLEANUP-2026-11-18.md)。
+主界面包含 **照片、备份、活动、设置** 四个页面。后台执行、照片权限和安装方式遵循各平台的能力与限制。
 
-Android `2.0.0-alpha.10` / iOS `0.2.34` 增加持久化相册去重和本机账号头像；移除 Android 版本保留，重做媒体权限入口及竖屏扫码页，并包含上一轮文件名、底部面板、滚动标题和 Material 配色优化，见 [实现记录](specs/ALBUMS-AVATARS-NATIVE-2026-11-18.md)。
+> [!NOTE]
+> 项目仍处于开发阶段，并非 Google 官方客户端。上传结果、画质和配额占用以 Google 相册实际显示为准，建议先用少量照片验证。
 
-最新版本 Android `2.0.0-alpha.11` / iOS `0.2.35` 简化相册分类说明；Android 调整节点选择备注、关于页和诊断日期排版，见 [文案与排版记录](specs/COPY-DATE-ABOUT-2026-11-18.md)。本轮按要求只编译、不安装。
+## 开始使用
 
-Android 后续修复版 `2.0.0-alpha.12` 允许从菜单、批次、左滑及详情中移除已取消的未完成任务，见 [修复记录](specs/CANCELLED-ACTIVITY-REMOVAL-2026-11-18.md)。iOS 保持 `0.2.35`，本轮只编译、不安装。
+| 平台 | 设备要求 | 安装包 |
+| --- | --- | --- |
+| Android | Android 10+，ARM64 | APK；CI 生成带独立包名的 Debug 预览版 |
+| iOS | iOS 17+，iPhone | 未签名 IPA，需自行签名安装 |
 
-Android `2.0.0-alpha.13` / iOS `0.2.36` 更新上传方式名称、顺序与备注，两端桌面图标和关于页统一复用桌面版图标，见 [上传方式与图标记录](specs/QUALITY-BRAND-2026-11-18.md)。只编译、不安装。
+从本仓库 [GitHub Actions](https://github.com/Cc-Cece/PicHarbor-Mobile/actions) 中选择成功的构建，在该次运行的 Artifacts 下载对应平台安装包。构建产物有保留期限；正式签名 Android 包需使用既有发布密钥构建。
 
-Android `2.0.0-alpha.14` / iOS `0.2.37` 修复底部面板直接消失，统一原生收起动画、关闭行为和长面板标题；并优化键盘、日期选择、复制反馈及 iOS 表单交互，见 [原生交互检查记录](specs/NATIVE-INTERACTIONS-2026-11-18.md)。只编译、不安装。
+1. 安装后授予需要的照片访问权限。
+2. 连接 Google 账号，确认备份范围和上传方式。
+3. 先备份少量照片，在 Google 相册核对结果，再开始批量备份。
 
-Android `2.0.0-alpha.15` / iOS `0.2.38` 增加按资源识别的“自动（推荐）”Live Photo 策略，保留原有形式、冻结每项决策，并将兼容选项移入高级设置，见 [自动 Live Photo 记录](specs/AUTOMATIC-LIVE-PHOTO-2026-11-18.md)。旧设置和任务保留，只编译、不安装。
+传输到电脑可直接从设置进入，与 Google 相册备份分开使用。iOS 的本机续签设置按应用内引导完成；下载到 IPA 不代表已经签名或能够直接安装。
 
-iOS `0.2.39` 修复快捷指令续签成功后必需操作仍显示 2/3，自动恢复旧版成功记录并在返回前台时刷新，见 [续签状态修复记录](specs/SELF-REFRESH-SETUP-FIX-2026-11-18.md)。Android 保持 `2.0.0-alpha.15`，只编译、不安装。
+## 构建
 
-Android `2.0.0-alpha.16` 修复高级实况设置选择后无法再次打开底部面板，并将入口图标改为向下箭头，见 [面板修复记录](specs/ANDROID-SHEET-REOPEN-2026-11-18.md)。只编译、不安装。
+### 共享核心
 
-Android `2.0.0-alpha.17` / iOS `0.2.40` 优化传输到电脑页面，突出扫码、折叠手动输入，独立选择发送范围并整理状态与操作，见 [传输页面优化记录](specs/COMPUTER-TRANSFER-PAGE-2026-11-19.md)。只编译、不安装。
+两端已包含固定版本的核心快照，普通构建无需另外克隆 gpmc。先在仓库根目录检查来源和内容一致性：
 
-iOS `0.2.41` 修复冷启动丢失当前账号选择及临时连接失败后不再恢复的问题，见 [账号恢复记录](specs/IOS-SAVED-SESSION-2026-11-19.md)。只编译、不安装。
+```shell
+python tools/sync-core.py
+```
 
-iOS `0.2.42` 进一步修正合并后的启动顺序：共享核心代理选路就绪后，才恢复保存账号，见 [启动顺序修复](specs/IOS-STARTUP-ORDER-2026-11-19.md)。
+需要升级核心时，先在独立 gpmc 仓库完成修改，再显式同步两端；不要直接修改客户端中的第三方快照。
 
-Build Android from `android/` with `tools/build-release.ps1`; persistent signing material stays outside this repository. Build iOS with the root unsigned-IPA workflow. The original framework delivery omitted functional and phone UI tests at the user's request; later explicitly authorized proxy device checks are documented separately above.
+```shell
+python tools/sync-core.py --source ../gpmc
+```
 
-## Development
+### Android
 
-- Offline source checks: `python tools/sync-core.py`.
-- Update both snapshots from the sibling canonical repository: `python tools/sync-core.py --source ../gpmc` (run from `mobile/`).
-- Windows signed APK: run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1` from `android/`.
-- Root GitHub workflows build Android Debug and unsigned iOS IPA independently, without tests or uploaded private keys. Nested historical workflows are retained for provenance and are not active workflows in this repository.
-- The existing 30-minute device installation task is disabled at the user's request. Do not register, enable or start it without a new installation instruction. Signing paths and mutex remain unchanged.
-- `python tools/package-mobile.py` creates the committed source archive with the pinned GPL proxy sources. No local credentials, signing keys or build caches are included.
-- Optional CI download tooling requires `python -m pip install -r tools/requirements.txt`; `python tools/download-ipa.py RUN_ID` checks the successful source run and GitHub artifact checksum.
+需要 JDK 17、Python 3.13、Android SDK 36 和 Go。仓库包含 Gradle Wrapper；代理核心在构建时从固定源码编译，CI 的工具链配置位于 [setup-build](android/.github/actions/setup-build/action.yml)。首次构建需要联网取得依赖。
 
-页面方案已经用户确认，见 [左右对照预览](specs/preview/mobile-page-comparison.html) 和 [确认后的调整](specs/preview/REVIEW-NOTES.md)。预览是设计依据，不是应用截图或功能验证。
+Windows PowerShell：
+
+```powershell
+cd android
+.\gradlew.bat :app:assembleDebug "-PbuildPython=$((Get-Command python).Source)"
+```
+
+输出：`android/app/build/outputs/apk/debug/app-debug.apk`。
+
+已有发布签名环境的维护者，可在 `android/` 下运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1 -BuildPython (Get-Command python).Source
+```
+
+发布脚本使用工作区外保存的既有密钥，并核对固定签名证书。源码仓库不包含私钥或签名密码；普通开发使用 Debug 构建。
+
+### iOS
+
+可使用根目录的 [iOS Build (Unsigned IPA)](.github/workflows/ios-build.yml) 工作流。它准备固定的 Python 和代理运行时，使用 XcodeGen 生成工程，再构建未签名 IPA；无需将个人签名证书上传到 CI。
+
+在 macOS 本地构建时，需要 Xcode、XcodeGen 和 Python 3.13。CI 当前使用的 Xcode 版本以工作流配置为准。
+
+```shell
+cd ios
+python3 tools/prepare_python.py
+python3 tools/prepare_proxy.py
+xcodegen generate
+xcodebuild -project PicHarbor.xcodeproj -scheme PicHarbor \
+  -configuration Release -sdk iphoneos \
+  -destination 'generic/platform=iOS' -derivedDataPath build \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+```
+
+该命令输出 `.app`；IPA 打包步骤见同一工作流。
+
+### 检查与源码交付
+
+```shell
+# iOS Python 离线逻辑检查；需已安装 ios/Python/requirements.lock 中的依赖
+python -m unittest discover -s ios/tests_python
+
+# Android Release APK 内容检查；需先完成对应构建
+python android/tools/inspect_release.py
+
+# 为当前已提交版本生成源码包，包含固定的 GPL 代理源码
+# 需先通过 Android 构建或 prepare_proxy.py 准备固定代理源码
+python tools/package-mobile.py
+```
+
+离线检查与编译成功不代替真实账号、云端结果或设备界面验证。源码包及本地产物写入 `delivery/`。
+
+## 项目结构
+
+```text
+mobile/
+├─ android/       Compose 界面、Android 系统适配与构建工具
+├─ ios/           SwiftUI 界面、PhotoKit、原生传输与嵌入式 Python
+├─ assets/brand/  两端共用图标及来源记录
+├─ tools/         核心同步、图标生成、CI 下载和源码打包
+└─ .github/       两端的有效 CI 工作流
+```
+
+开发记录、方案和页面预览由维护者在本地归档，不作为公开仓库内容。构建缓存、交付包、账号数据和签名材料不纳入版本控制。
+
+相关项目：[PicHarbor 桌面版](https://github.com/Cc-Cece/PicHarbor) · [gpmc 共享核心](https://github.com/Cc-Cece/gpmc)

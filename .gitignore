@@ -5,3 +5,20 @@ delivery/
 *.keystore
 *.dpapi
 __pycache__/
+
+# Project notes, design previews and historical documentation stay local.
+/local-docs/
+/specs/
+/android/docs/
+/ios/docs/
+**/*.md
+**/*.mdx
+**/*.rst
+**/*.adoc
+!/README.md
+
+# Keep legal provenance and the format guide exported by the running app.
+!**/NOTICE.md
+!**/LICENSE.md
+!**/LICENSES.md
+!/android/app/src/main/assets/diagnostic-format.md
