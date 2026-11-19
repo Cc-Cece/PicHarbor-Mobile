@@ -16,6 +16,7 @@ import SelfRefreshKit
     private(set) var effective: [String: Any] = [:]
     private var policyScope = ""
     private var started = false
+    private let refreshCoordinator = RemoteRefreshCoordinator()
     private var lastFlush = Date.distantPast
     private var heartbeat: Task<Void, Never>?
     private var batchProjection: Task<Void, Never>?
@@ -38,8 +39,8 @@ import SelfRefreshKit
     func start(_ model: HarborModel) async {
         guard !started, model.engine.ready else { return }
         started = true
+        await refresh(model, force: true)
         startupUI = await call("startup")["ui"] as? [String: Any]
-        _ = await call("sync")
         model.settings = await resolve(model.settings, scope: model.account)
         _ = await model.saveSettings()
         update = await call("update")["update"] as? [String: Any]
@@ -47,11 +48,27 @@ import SelfRefreshKit
         heartbeat = Task { [weak self, weak model] in
             while !Task.isCancelled {
                 guard let self, let model else { return }
+                if UIApplication.shared.applicationState == .active { await self.refresh(model) }
                 await self.snapshotFacts(model)
                 if UIApplication.shared.applicationState == .active { _ = await self.call("lifecycle", ["phase": "heartbeat"]) }
                 await self.flushIfNeeded()
                 try? await Task.sleep(for: .seconds(60))
             }
+        }
+    }
+    func refresh(_ model: HarborModel, force: Bool = false) async {
+        guard started, model.engine.ready else { return }
+        _ = await refreshCoordinator.refresh(force: force) { [self, weak model] in
+            guard let model else { return false }
+            let result = await call("sync")
+            guard result["ok"] as? Bool == true else { return false }
+            if result["changed"] as? Bool == true {
+                model.settings = await resolve(model.settings, scope: model.account)
+                _ = await model.saveSettings()
+            }
+            update = await call("update")["update"] as? [String: Any]
+            if result["changed"] as? Bool == true { revision += 1 }
+            return true
         }
     }
     func resolve(_ settings: BackupSettings, scope: String) async -> BackupSettings {

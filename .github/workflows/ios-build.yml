@@ -98,6 +98,11 @@ jobs:
           swiftc Sources/Core/SavedSessionPolicy.swift Sources/Core/SessionStartup.swift Sources/Core/KeychainStore.swift tools/test_saved_session.swift -o "$RUNNER_TEMP/saved-session-tests"
           "$RUNNER_TEMP/saved-session-tests"
 
+      - name: Check remote content refresh
+        run: |
+          swiftc Sources/Core/RemoteRefreshCoordinator.swift tools/test_remote_refresh.swift -o "$RUNNER_TEMP/remote-refresh-tests"
+          "$RUNNER_TEMP/remote-refresh-tests"
+
       - name: Build unsigned .app
         env:
           SCHEME: ${{ steps.app.outputs.name }}

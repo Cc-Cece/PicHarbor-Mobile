@@ -22,12 +22,12 @@ struct RemoteMoreView: View {
         }
         .navigationTitle(page["title"] as? String ?? L10n.text("更多"))
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: remote.revision) {
-            if let providedPage { page = providedPage; return }
-            if !values.isEmpty || !files.isEmpty { return }
-            let result = await remote.call(action == nil ? "more" : "action", action.map { ["action": $0] } ?? [:])
-            page = result["page"] as? [String: Any] ?? [:]
+        .task {
+            if providedPage == nil { await remote.refresh(model, force: true) }
+            await loadPage()
         }
+        .onChange(of: remote.revision) { _, _ in Task { await loadPage() } }
+        .refreshable { await remote.refresh(model, force: true); await loadPage() }
         .sheet(isPresented: $generatingDiagnostic) {
             NavigationStack {
                 MobileDiagnosticsView(onAttach: { url in
@@ -68,6 +68,13 @@ struct RemoteMoreView: View {
             }
         }
         .alert("PicHarbor", isPresented: Binding(get: { !message.isEmpty }, set: { if !$0 { message = "" } })) { Button(L10n.text("好")) { message = "" } } message: { Text(message) }
+    }
+    private func loadPage() async {
+        if let providedPage { page = providedPage; return }
+        guard values.isEmpty, files.isEmpty, !busy else { return }
+        let result = await remote.call(action == nil ? "more" : "action", action.map { ["action": $0] } ?? [:])
+        guard values.isEmpty, files.isEmpty, !busy else { return }
+        page = result["page"] as? [String: Any] ?? [:]
     }
     private func binding(_ id: String) -> Binding<String> { Binding(get: { values[id] ?? "" }, set: { values[id] = String($0.prefix(10000)) }) }
     private func node(_ item: [String: Any]) -> AnyView {
