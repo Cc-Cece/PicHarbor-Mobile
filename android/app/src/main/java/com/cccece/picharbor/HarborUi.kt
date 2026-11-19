@@ -88,6 +88,7 @@ data class HarborUiData(val settings:HarborSettings,val media:List<MediaEntry>,v
 
 @Composable
 fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPickFiles:()->Unit,onPickTree:()->Unit,onExport:()->Unit) {
+    RemoteAlerts(vm)
     val incoming by vm.graph.computer.incoming.collectAsState()
     val settings by vm.settings.collectAsState()
     val media by vm.media.collectAsState();val records by vm.records.collectAsState();val jobs by vm.jobs.collectAsState()
@@ -167,6 +168,7 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
                                 "permissions"->PermissionsScreen(vm,data,onPermissions,onPickTree)
                                 "background-settings"->BackgroundSettingsScreen(vm,data)
                                 "about"->AboutScreen(vm,data)
+                                "more"->RemoteMoreScreen(vm)
                                 "information"->MediaInformationScreen(vm,data)
                                 "live-link"->LiveLinkScreen(vm,data)
                                 "task-proxy"->TaskProxyScreen(vm,data)
@@ -207,7 +209,7 @@ fun HarborRoot(vm:HarborViewModel,onLogin:()->Unit,onPermissions:()->Unit,onPick
 }
 
 @Composable
-fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,close:Boolean=false,navigation:@Composable ()->Unit={},action:@Composable RowScope.()->Unit={}) {
+fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,close:Boolean=false,navigation:@Composable ()->Unit={},back:(()->Unit)?=null,action:@Composable RowScope.()->Unit={}) {
     if(root) {
         val behavior=LocalPageScrollBehavior.current
         val collapsed=behavior?.state?.collapsedFraction?:0f
@@ -220,14 +222,16 @@ fun PageTitle(title:String,vm:HarborViewModel,root:Boolean=false,close:Boolean=f
                     modifier=Modifier.graphicsLayer{alpha=((collapsed-.35f)/.65f).coerceIn(0f,1f)}.semantics{if(collapsed<.5f)invisibleToUser() else heading()})
             }
         }
-    } else CenterAlignedTopAppBar(title={LText(title,maxLines=1,overflow=TextOverflow.Ellipsis)},navigationIcon={IconButton(onClick=vm::back){LIcon(if(close)Icons.Outlined.Close else Icons.AutoMirrored.Outlined.ArrowBack,if(close)"关闭" else "返回")}},actions=action,windowInsets=WindowInsets(0,0,0,0))
+    } else CenterAlignedTopAppBar(title={LText(title,maxLines=1,overflow=TextOverflow.Ellipsis)},navigationIcon={IconButton(onClick={if(back!=null)back() else vm.back()}){LIcon(if(close)Icons.Outlined.Close else Icons.AutoMirrored.Outlined.ArrowBack,if(close)"关闭" else "返回")}},actions=action,windowInsets=WindowInsets(0,0,0,0))
 
 }
 @Composable
 fun SettingsRow(title:String,subtitle:String="",icon:ImageVector?=null,enabled:Boolean=true,onClick:()->Unit,leading:@Composable (()->Unit)?=null,trailing:@Composable (()->Unit)?=null) {
+    val remote=(androidx.compose.ui.platform.LocalContext.current.applicationContext as PicHarborApp).graph.remote
+    val policyEnabled=LocalRemotePolicyEnabled.current
     val content=MaterialTheme.colorScheme.onSurface.copy(alpha=if(enabled)1f else .38f)
     val secondary=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=if(enabled)1f else .38f)
-    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).clickable(enabled=enabled,role=Role.Button,onClick=onClick)
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).clickable(enabled=enabled,role=Role.Button,onClick={if(!policyEnabled||RemotePolicies.labels[title]?.let{remote.intercept(it)}!=true)onClick()})
         .heightIn(min=if(subtitle.isEmpty())56.dp else 72.dp).padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
         if(leading!=null)leading() else if(icon!=null)LIcon(icon,null,tint=if(enabled)MaterialTheme.colorScheme.primary else content,modifier=Modifier.size(24.dp))
         Column(Modifier.weight(1f)){LText(title,style=MaterialTheme.typography.bodyLarge,color=content);if(subtitle.isNotEmpty())LText(subtitle,style=MaterialTheme.typography.bodySmall,color=secondary,modifier=Modifier.padding(top=3.dp))}
@@ -238,9 +242,11 @@ fun SettingsRow(title:String,subtitle:String="",icon:ImageVector?=null,enabled:B
 }
 @Composable
 fun ToggleRow(title:String,subtitle:String,checked:Boolean,icon:ImageVector?=null,enabled:Boolean=true,onChange:(Boolean)->Unit) {
+    val remote=(androidx.compose.ui.platform.LocalContext.current.applicationContext as PicHarborApp).graph.remote
+    val policyEnabled=LocalRemotePolicyEnabled.current
     val color=MaterialTheme.colorScheme.onSurface.copy(alpha=if(enabled)1f else .38f)
     Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow).heightIn(min=if(subtitle.isEmpty())56.dp else 72.dp)
-        .toggleable(value=checked,enabled=enabled,role=Role.Switch,onValueChange=onChange).padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+        .toggleable(value=checked,enabled=enabled,role=Role.Switch,onValueChange={if(!policyEnabled||RemotePolicies.labels[title]?.let{remote.intercept(it)}!=true)onChange(it)}).padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
         if(icon!=null)LIcon(icon,null,tint=if(enabled)MaterialTheme.colorScheme.primary else color,modifier=Modifier.size(24.dp))
         Column(Modifier.weight(1f)) {
             LText(title,color=color,style=MaterialTheme.typography.bodyLarge)

@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import java.time.*
 import org.json.JSONObject
 import org.json.JSONArray
@@ -67,14 +68,19 @@ class Preferences(private val context: Context) {
         proxyPort=p[intPreferencesKey("proxyPort")]?:0,
         proxyUser=p[stringPreferencesKey("proxyUser")]?:""
     )
-    val flow = context.harborPreferences.data.map(::from)
+    val flow = context.harborPreferences.data.combine(RemotePolicies.revision){p,_->RemotePolicies.overlay(context,from(p))}
+    suspend fun rawGet()=from(context.harborPreferences.data.first())
     suspend fun get() = flow.first()
-    suspend fun boolean(key: String, value: Boolean) { context.harborPreferences.edit { it[booleanPreferencesKey(key)] = value } }
-    suspend fun string(key: String, value: String) { context.harborPreferences.edit { it[stringPreferencesKey(key)] = value } }
-    suspend fun integer(key: String, value: Int) { context.harborPreferences.edit { it[intPreferencesKey(key)] = value } }
+    suspend fun boolean(key: String, value: Boolean) { if(RemotePolicies.locked(context,key))return;context.harborPreferences.edit { it[booleanPreferencesKey(key)] = value } }
+    suspend fun string(key: String, value: String) { if(RemotePolicies.locked(context,key))return;context.harborPreferences.edit { it[stringPreferencesKey(key)] = value } }
+    suspend fun integer(key: String, value: Int) { if(RemotePolicies.locked(context,key))return;context.harborPreferences.edit { it[intPreferencesKey(key)] = value } }
+    suspend fun remoteApply(result:JSONObject){
+        val values=result.optJSONObject("values")?:return
+        context.harborPreferences.edit{p->values.keys().forEach{k->if(!RemotePolicies.locked(context,k))when(val v=values.get(k)){is Boolean->p[booleanPreferencesKey(k)]=v;is Int->p[intPreferencesKey(k)]=v;is String->p[stringPreferencesKey(k)]=v}}}
+    }
     suspend fun folders(value: Set<String>) { context.harborPreferences.edit { it[stringSetPreferencesKey("folders")] = value } }
     suspend fun trees(value: Set<String>) { context.harborPreferences.edit { it[stringSetPreferencesKey("trees")] = value } }
-    suspend fun mobile(value: String) { context.harborPreferences.edit { it[stringPreferencesKey("mobile")]=value; it[booleanPreferencesKey("wifi")]=value=="none" } }
+    suspend fun mobile(value: String) { if(RemotePolicies.locked(context,"wifi"))return;context.harborPreferences.edit { it[stringPreferencesKey("mobile")]=value; it[booleanPreferencesKey("wifi")]=value=="none" } }
     suspend fun activateAccount(account:String) {
         context.harborPreferences.edit { p ->
             val booleans=mapOf("onboarded" to false,"auto" to false,"wifi" to true,"charging" to false,"videos" to true,"scheduled" to false,"restart" to true,"sameName" to false,"allFolders" to true,"strictConfirmation" to false)

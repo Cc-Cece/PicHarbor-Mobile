@@ -60,18 +60,23 @@ struct HarborRootView: View {
         }
         .task {
             await model.boot()
+            await RemoteServices.shared.start(model)
             #if DEBUG
             if model.installTaskPresentationFixture() { selectedTab = 2; return }
             #endif
             welcome = model.initialized && model.account.isEmpty && model.accounts.isEmpty && model.credentialStorageAvailable && selectedTab == 0
         }
         .sheet(isPresented: $welcome) { NavigationStack { ConnectionView() }.environmentObject(model) }
+        .background { RemoteAlertHost().environmentObject(model) }
         .alert("PicHarbor", isPresented: Binding(get: { !model.notice.isEmpty && L10n.message(model.notice) != L10n.text("已加入备份队列。") }, set: { if !$0 { model.notice = "" } })) {
             Button(L10n.text("好")) { model.notice = "" }
         } message: { Text(L10n.message(model.notice)) }
         .onChange(of: scenePhase) { _, phase in
             MobileDiagnostics.shared.record("app.lifecycle", fields: ["foreground": phase == .active])
+            if phase == .active { RemoteServices.shared.lifecycle("foreground") }
+            if phase == .background { RemoteServices.shared.lifecycle("background") }
             if phase == .active {
+                Task { await RemoteServices.shared.flushIfNeeded() }
                 link.startPresence()
                 Task { await model.library.refresh(); await model.pump() }
             } else {
@@ -79,6 +84,7 @@ struct HarborRootView: View {
             }
             if phase == .background { HarborAppDelegate.schedule() }
         }
+        .onReceive(model.network.$connected) { connected in if connected { Task { await RemoteServices.shared.flushIfNeeded() } } }
         .onChange(of: link.incomingScope) { _, scope in
             guard let scope else { return }
             Task {

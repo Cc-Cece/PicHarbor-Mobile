@@ -11,7 +11,7 @@ struct PipelineAdvancedView: View {
     private var titles: [String] { [L10n.text("准备照片"), L10n.text("上传检查"), L10n.text("文件上传"), L10n.text("保存与配对"), L10n.text("云端确认"), L10n.text("缓存上限（MB）")] }
     var body: some View {
         Form {
-            Section { Toggle(L10n.text("使用自定义配置"), isOn: $custom) }
+            Section { Toggle(L10n.text("使用自定义配置"), isOn: $custom).remoteSetting("pipelineMode") }
             if custom {
                 Section {
                     ForEach(0..<6, id: \.self) { index in
@@ -19,11 +19,11 @@ struct PipelineAdvancedView: View {
                             Text(titles[index]); Spacer()
                             TextField(titles[index], text: $fields[index]).keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing).frame(width: 90).accessibilityIdentifier("pipeline.field.\(index)")
-                        }
+                        }.remoteSetting("pipelineOverrides")
                     }
                 } footer: { Text(L10n.text("准备照片 1–3，上传检查、保存与配对、云端确认 1–4，文件上传 1–12，缓存 128–8192 MB。")) }
             }
-            Section { Toggle(L10n.text("自定义任务保护"), isOn: $customProtection) }
+            Section { Toggle(L10n.text("自定义任务保护"), isOn: $customProtection).remoteSetting("executionOverrides") }
             if customProtection {
                 Section {
                     ForEach(0..<6, id: \.self) { index in
@@ -31,7 +31,7 @@ struct PipelineAdvancedView: View {
                             Text(protectionTitles[index]); Spacer()
                             TextField(protectionTitles[index], text: $protectionFields[index]).keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing).frame(width: 80).accessibilityIdentifier("protection.field.\(index)")
-                        }
+                        }.remoteSetting("executionOverrides")
                     }
                 } footer: { Text(L10n.text("重试 0–10 次；查询 15–300 秒；提交 15–600 秒；无进展 30–1800 秒；文件处理 10–1440 分钟；云端等待 10–240 分钟。")) }
             }

@@ -21,6 +21,17 @@ static struct PyModuleDef module = {PyModuleDef_HEAD_INIT, "_harbor_native", NUL
 static PyObject *PyInit_harbor_native(void) { return PyModule_Create(&module); }
 
 @implementation PythonBridge
++ (NSString *)remote:(NSString *)home action:(NSString *)action payload:(NSString *)payload {
+    if (!dispatchFunction) return @"{\"ok\":false,\"error\":\"RUNTIME_UNAVAILABLE\"}";
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject *adapter = PyImport_ImportModule("harbor_remote");
+    PyObject *result = adapter ? PyObject_CallMethod(adapter, "dispatch", "sss", home.UTF8String, action.UTF8String, payload.UTF8String) : NULL;
+    const char *utf8 = result ? PyUnicode_AsUTF8(result) : NULL;
+    NSString *text = utf8 ? [NSString stringWithUTF8String:utf8] : @"{\"ok\":false,\"error\":\"REMOTE_UNAVAILABLE\"}";
+    Py_XDECREF(result); Py_XDECREF(adapter); PyErr_Clear();
+    PyGILState_Release(state);
+    return text;
+}
 + (BOOL)start:(NSString *)home {
     NSAssert([NSThread isMainThread], @"Initialize Python on main thread");
     if (dispatchFunction) return YES;

@@ -104,6 +104,7 @@
 "仍要重新上传" = "Upload again anyway";
 "仍要重新上传？" = "Upload again anyway?";
 "从图片识别" = "Read from image";
+"从文件选择" = "Choose a file";
 "从相册导出资源" = "Export from Photos";
 "从相册选择二维码" = "Choose QR Code from Photos";
 "从链接或文件导入，任选一种。一次使用一份配置，订阅需手动更新。" = "Import from a URL or file. Use one configuration at a time. Update subscriptions manually.";
@@ -227,6 +228,9 @@
 "原始画质（占用配额）" = "Original quality (uses quota)";
 "原有配置" = "Existing configuration";
 "及" = " and ";
+"反馈已保存在本机，联网后自动发送。" = "Your feedback is saved locally and will be sent when connected.";
+"反馈已收到：" = "Feedback received: ";
+"发现新版本" = "New version available";
 "发送完成" = "Sending finished";
 "发送期间请保持 PicHarbor 在前台。锁屏后传输会停止，因为后台传输无法校验这台电脑的自签名证书。下一批也需要打开 PicHarbor。" = "Keep PicHarbor in the foreground while sending. Transfers stop when the screen locks, because background transfer cannot verify this computer's self-signed certificate. The next batch also needs PicHarbor open.";
 "发送范围" = "Send selection";
@@ -432,6 +436,7 @@
 "恢复默认设置？" = "Restore defaults?";
 "我已了解风险" = "I understand the risk";
 "所有节点不可用时" = "When All Nodes Are Unavailable";
+"所选截图" = "Selected screenshot";
 "所选项目需要重新检查，原件已保留。" = "The selection needs another check. Originals are kept.";
 "所需内容已在云端找到并通过检查，已跳过上传。" = "All required content was found in the cloud and passed verification. Upload was skipped.";
 "手动" = "Manual";
@@ -468,6 +473,9 @@
 "无法唯一确认照片与视频的配对关系，已分别保留原文件。" = "The photo and video cannot be paired unambiguously. Original files are preserved separately.";
 "无法恢复此任务的照片版本。请从照片页面重新备份；已有云端内容保留。" = "This task's photo version cannot be recovered. Back it up again from Photos. Existing cloud content is kept.";
 "无法查看照片" = "Photo unavailable";
+"无法添加截图。" = "Unable to add the screenshot.";
+"无法添加此诊断文件。" = "Unable to add this diagnostic file.";
+"无法生成诊断文件，请缩小日期范围后重试。" = "Unable to create the diagnostic file. Try a shorter date range.";
 "无法访问安全凭据存储。" = "Secure credential storage is unavailable.";
 "无法读写任务数据库，请检查剩余空间。" = "Task storage could not be read or written. Check free space.";
 "无法读取 Live Photo 关键帧，已保留原件。" = "The Live Photo key frame could not be read. Your original is kept.";
@@ -505,6 +513,7 @@
 "暂时无法直达释放空间" = "Unable to open Free up space";
 "曝光时间" = "Exposure time";
 "曝光补偿" = "Exposure compensation";
+"更多" = "More";
 "更多操作" = "More actions";
 "更新成功：{0}" = "Updated: {0}";
 "更新订阅" = "Update Subscription";
@@ -603,6 +612,7 @@
 "此任务已有固定的资源版本。请重新准备任务，已有云端结果会先查重。" = "This task already has a fixed version. Prepare it again; existing cloud content will be checked first.";
 "此任务正在处理，请等待本次检查结束。" = "This task is being processed. Wait for this check to finish.";
 "此处会将照片和配对视频作为两个文件分享。如需分享为一张动态照片，请前往 iPhone 自带的“照片”应用。" = "The photo and paired video will be shared as two files. To share a single Live Photo, use the Photos app on your iPhone.";
+"此设置已由应用配置调整。" = "This setting has been adjusted by application configuration.";
 "没有可发送的照片或视频。" = "There are no photos or videos to send.";
 "没有可显示的项目" = "Nothing to show";
 "活动" = "Activity";
@@ -617,6 +627,7 @@
 "测速已停止。" = "Testing stopped.";
 "深色" = "Dark";
 "添加 Google 账号" = "Add Google account";
+"添加截图" = "Add screenshot";
 "添加订阅" = "Add Subscription";
 "清理前仍需单独检查，可在空间清理核验中调整。" = "Cleanup needs a separate check. Adjust it in Cleanup verification.";
 "清理前会核对账号和照片内容，最后由你确认删除。" = "Your account and photo content are checked before you confirm deletion.";
@@ -648,6 +659,7 @@
 "版本保留" = "Versions to keep";
 "版本策略" = "Version settings";
 "现存覆盖" = "Retained coverage";
+"生成并添加" = "Generate and attach";
 "生效策略" = "Effective policy";
 "用数据线连接，并打开电脑上的 PicHarbor。" = "Connect with a cable and open PicHarbor on the computer.";
 "电脑" = "Computer";
@@ -778,6 +790,7 @@
 "证书前 16 位或完整指纹" = "First 16 characters or full certificate fingerprint";
 "识别结果" = "Detected format";
 "诊断" = "Diagnostics";
+"诊断文件" = "Diagnostic file";
 "详情" = "Details";
 "语言" = "Language";
 "请允许访问所选照片，然后重新选择。" = "Allow access to the selected photo, then select it again.";
@@ -791,6 +804,7 @@
 "请先配对这台电脑，再用数据线连接一次。" = "Pair with this computer first, then connect the cable once.";
 "请再配对一次这台电脑。" = "Pair with this computer again.";
 "请在 Google 相册中登录与 PicHarbor 备份时相同的 Google 账号。" = "Sign in to Google Photos with the same Google Account you use for backups in PicHarbor.";
+"请填写反馈内容，并检查附件后重试。" = "Enter your feedback and check the attachments before trying again.";
 "请填写局域网地址、端口、证书前 16 位和 6 位配对码。" = "Enter the LAN address, port, the first 16 characters of the certificate, and the 6-digit pairing code.";
 "请检查照片权限、网络和可用空间后重试。" = "Check photo access, your connection and available storage, then try again.";
 "请求相册访问" = "Request Photos access";
@@ -803,6 +817,7 @@
 "请输入有效的 HTTP 或 HTTPS 订阅链接。" = "Enter a valid HTTP or HTTPS subscription URL.";
 "请输入有效的 HTTPS 订阅链接。" = "Enter a valid HTTPS subscription URL.";
 "请输入范围内的整数。" = "Enter whole numbers within the allowed ranges.";
+"请选择 5 MiB 以内的诊断文件。" = "Choose a diagnostic file no larger than 5 MiB.";
 "请选择节点" = "Choose a Node";
 "请选择要添加的订阅。" = "Choose a subscription to add.";
 "请选择释放设备空间，避免误入清理云端存储。移除后可在苹果相册“最近删除”中查看；需要立即腾出空间时，再自行确认是否清空。开启 iCloud 照片时，本机删除也会同步到同一图库的其他设备。" = "Choose device cleanup rather than cloud storage cleanup. Removed items appear in Recently Deleted in Apple Photos; empty it yourself if you need the space immediately. With iCloud Photos enabled, local deletions also sync to other devices using the same library.";

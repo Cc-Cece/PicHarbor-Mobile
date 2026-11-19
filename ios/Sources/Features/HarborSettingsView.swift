@@ -35,7 +35,7 @@ struct HarborSettingsView: View {
                     .accessibilityIdentifier("settings.restore")
             }
             Section {
-                NavigationLink { MobileDiagnosticsView() } label: { Label(L10n.text("诊断"), systemImage: "stethoscope") }
+                NavigationLink { RemoteMoreView() } label: { Label(L10n.text("更多"), systemImage: "ellipsis.circle") }
                 NavigationLink { AboutView() } label: { Label(L10n.text("关于 PicHarbor"), systemImage: "info.circle") }
             }
         }.navigationTitle(L10n.text("设置")).task(id: model.account) { await AccountAvatars.shared.refresh(model.engine, account: model.account) }
@@ -55,28 +55,28 @@ struct BackupPreferencesView: View {
                 Picker(L10n.text("并发模式"), selection: Binding(get: { model.settings.pipelineMode ?? .automatic }, set: { value in
                     if value == .custom && model.settings.pipelineOverrides == nil { model.settings.pipelineOverrides = PipelineProfiles.recommended(model.pipelineDevice) }
                     model.settings.pipelineMode = value
-                })) { ForEach(PipelineMode.allCases, id: \.self) { Text($0.title).tag($0) } }.pickerStyle(.menu)
+                })) { ForEach(PipelineMode.allCases, id: \.self) { Text($0.title).tag($0) } }.pickerStyle(.menu).remoteSetting("pipelineMode")
                 if model.settings.pipelineMode == .custom {
-                    NavigationLink(L10n.text("高级配置")) { PipelineAdvancedView() }
+                    NavigationLink(L10n.text("高级配置")) { PipelineAdvancedView() }.remoteSetting("pipelineOverrides").remoteSetting("executionOverrides")
                 }
             }
             Section {
-                Picker(L10n.text("上传画质"), selection: $model.settings.quality) { ForEach(UploadQuality.allCases) { Text($0.title).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("preferences.quality")
+                Picker(L10n.text("上传画质"), selection: $model.settings.quality) { ForEach(UploadQuality.allCases) { Text($0.title).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("preferences.quality").remoteSetting("quality")
             } header: { Text(L10n.text("上传画质")) } footer: { Text(L10n.text("元信息会随文件上传，云端处理可能调整部分信息。节省空间由设备或 Google 相册处理，不使用第三方图片处理服务。此处仅选择上传方式，实际配额占用以 Google 相册显示为准。大量备份前，建议先少量测试。")) }
             Section {
                 Picker(L10n.text("备份方式"), selection: Binding(get: { model.settings.live == .automatic ? "automatic" : "manual" }, set: { value in
                     if value == "automatic" { model.settings.live = .automatic }
                     else if model.settings.live == .automatic { model.settings.live = .applePair }
-                })) { Text(L10n.text("自动（推荐）")).tag("automatic"); Text(L10n.text("手动")).tag("manual") }.pickerStyle(.menu).accessibilityIdentifier("preferences.live")
-                if model.settings.live != .automatic { NavigationLink(L10n.text("高级实况设置")) { LivePhotoAdvancedView() } }
+                })) { Text(L10n.text("自动（推荐）")).tag("automatic"); Text(L10n.text("手动")).tag("manual") }.pickerStyle(.menu).accessibilityIdentifier("preferences.live").remoteSetting("live")
+                if model.settings.live != .automatic { NavigationLink(L10n.text("高级实况设置")) { LivePhotoAdvancedView() }.remoteSetting("live") }
             } header: { Text(L10n.text("Live Photo 备份方式")) } footer: {
                 Text(L10n.text("逐项识别并保留原有形式；不会自动转换格式。切换只影响新任务。"))
             }
             Section {
-                Picker(L10n.text("版本保留"), selection: $model.settings.edits) { ForEach(EditPolicy.allCases) { Text($0.title).tag($0) } }
+                Picker(L10n.text("版本保留"), selection: $model.settings.edits) { ForEach(EditPolicy.allCases) { Text($0.title).tag($0) } }.remoteSetting("edits")
             } header: { Text(L10n.text("编辑过的照片与视频")) } footer: { Text(L10n.text("同时保留修改前后的内容；内容相同只备份一份。不保留撤销编辑的记录。")) }
             Section {
-                Toggle(L10n.text("保留相册分类"), isOn: $model.settings.syncAlbums)
+                Toggle(L10n.text("保留相册分类"), isOn: $model.settings.syncAlbums).remoteSetting("syncAlbums")
             } footer: { Text(L10n.text("备份时，按手机里的相簿名称整理到 Google 相册。例如，“旅行”里的照片会放进云端的“旅行”相册，后续备份继续放进同一个相册，不会每次新建。手机上删除照片或修改相簿名称，不会改变云端内容。只对开启后的新备份任务生效。")) }
             Section { NavigationLink(L10n.text("高级备份检查")) { AdvancedBackupChecksView() } }
         }.navigationTitle(L10n.text("备份偏好")).navigationBarTitleDisplayMode(.inline)
@@ -130,7 +130,7 @@ struct BackupScopeView: View {
             }
             Section {
                 LabeledContent(L10n.text("将备份"), value: L10n.text("{0} 项", [String(describing: scopeCount)]))
-                Toggle(L10n.text("开启自动备份"), isOn: $automatic).id("automatic-backup")
+                Toggle(L10n.text("开启自动备份"), isOn: $automatic).id("automatic-backup").remoteSetting("automatic")
                 LabeledContent(L10n.text("上传画质"), value: model.settings.quality.title)
                 LabeledContent("Live Photo", value: model.settings.live.title)
                 LabeledContent(L10n.text("网络"), value: model.settings.wifiOnly ? L10n.text("仅 Wi-Fi") : L10n.text("Wi-Fi 与蜂窝"))
@@ -164,8 +164,8 @@ struct NetworkPreferencesView: View {
     var body: some View {
         Form {
             Section {
-                Toggle(L10n.text("仅通过 Wi-Fi 备份"), isOn: $model.settings.wifiOnly)
-                Toggle(L10n.text("自动备份"), isOn: Binding(get: { model.settings.automatic }, set: { value in if value { scope = true } else { model.settings.automatic = false } }))
+                Toggle(L10n.text("仅通过 Wi-Fi 备份"), isOn: $model.settings.wifiOnly).remoteSetting("wifiOnly")
+                Toggle(L10n.text("自动备份"), isOn: Binding(get: { model.settings.automatic }, set: { value in if value { scope = true } else { model.settings.automatic = false } })).remoteSetting("automatic")
                 NavigationLink(L10n.text("检查备份范围")) { BackupScopeView() }
                 if model.updatingNetwork { ProgressView(L10n.text("正在为未完成任务应用网络设置…")) }
             } footer: { Text(L10n.text("网络设置立即生效，手动暂停的任务保持暂停。正在上传的文件可能需要重传。关闭自动备份不会取消已有任务。")) }
@@ -280,10 +280,10 @@ struct InterfacePreferencesView: View {
             Section(L10n.text("语言")) {
                 Picker(L10n.text("语言"), selection: $language.selection) {
                     ForEach(AppLanguage.allCases) { Text($0.title).tag($0.rawValue).accessibilityIdentifier("language.\($0.rawValue)") }
-                }.pickerStyle(.inline).labelsHidden()
+                }.pickerStyle(.inline).labelsHidden().remoteSetting("language")
             }
             Section(L10n.text("外观")) {
-                Picker(L10n.text("外观"), selection: $model.settings.appearance) { Text(L10n.text("跟随系统")).tag("system"); Text(L10n.text("浅色")).tag("light"); Text(L10n.text("深色")).tag("dark") }.pickerStyle(.inline).labelsHidden()
+                Picker(L10n.text("外观"), selection: $model.settings.appearance) { Text(L10n.text("跟随系统")).tag("system"); Text(L10n.text("浅色")).tag("light"); Text(L10n.text("深色")).tag("dark") }.pickerStyle(.inline).labelsHidden().remoteSetting("appearance")
             }
         }
             .navigationTitle(L10n.text("界面")).navigationBarTitleDisplayMode(.inline)
@@ -301,11 +301,11 @@ struct ActivityArchiveSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle(L10n.text("自动归档"), isOn: $prefs.enabled)
+                Toggle(L10n.text("自动归档"), isOn: $prefs.enabled).remoteSetting("archiveEnabled")
                 HStack {
                     Text(L10n.text("归档天数"))
                     Spacer()
-                    TextField(L10n.text("归档天数"), text: $days).keyboardType(.numberPad).focused($editingDays).multilineTextAlignment(.trailing).frame(width: 80).accessibilityIdentifier("archive.days")
+                    TextField(L10n.text("归档天数"), text: $days).keyboardType(.numberPad).focused($editingDays).multilineTextAlignment(.trailing).frame(width: 80).accessibilityIdentifier("archive.days").remoteSetting("archiveDays")
                 }
                 // Do NOT wrap this row in LabeledContent and do NOT add a
                 // tap gesture on it: LabeledContent merges the field into
@@ -340,6 +340,7 @@ struct DiagnosticsView: View {
 }
 
 private struct AboutView: View {
+    @ObservedObject private var remote = RemoteServices.shared
     @ObservedObject private var language = LanguagePreferences.shared
     var body: some View {
         List {
@@ -348,9 +349,12 @@ private struct AboutView: View {
                     Image("PicHarborBrand").resizable().scaledToFit().frame(width: 64, height: 64).accessibilityHidden(true)
                     Text("PicHarbor").font(.largeTitle.bold())
                     Text(L10n.text("开发版 {0}", [String(describing: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")])).foregroundStyle(.secondary)
+                    if let update = remote.update, (update["build"] as? Int ?? 0) > (Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0") ?? 0),
+                       let address = update["url"] as? String, address.hasPrefix("https://"), let url = URL(string: address) { Link(L10n.text("发现新版本"), destination: url) }
                 }.frame(maxWidth: .infinity).padding(.vertical, 24)
             }
             Section { Text(L10n.text("面向 iPhone 的照片与视频备份。取回内容请使用谷歌相册官方客户端。")) }
+            Section { NavigationLink { MobileDiagnosticsView() } label: { Label(L10n.text("诊断"), systemImage: "stethoscope") } }
             Section(L10n.text("开源组件")) {
                 Text(L10n.text("gpmc · GPL-3.0\nCPython · Python Software Foundation License\nblackboxprotobuf · MIT\nRequests 及依赖许可证随应用分发。"))
                 Link(L10n.text("项目源码与许可证"), destination: URL(string: "https://github.com/Cc-Cece/PicHarbor-Mobile")!)

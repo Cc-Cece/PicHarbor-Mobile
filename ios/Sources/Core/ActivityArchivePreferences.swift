@@ -5,7 +5,10 @@ import Combine
 final class ActivityArchivePreferences: ObservableObject {
     static let shared = ActivityArchivePreferences()
     private let defaults: UserDefaults
-    @Published var enabled: Bool { didSet { defaults.set(enabled, forKey: "activity.archive.enabled") } }
+    @Published var enabled: Bool { didSet {
+        if RemoteServices.shared.forced.contains("archiveEnabled"), let value = RemoteServices.shared.effective["archiveEnabled"] as? Bool, enabled != value { enabled = value; return }
+        defaults.set(enabled, forKey: "activity.archive.enabled")
+    } }
     @Published private(set) var days: Int
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -15,6 +18,7 @@ final class ActivityArchivePreferences: ObservableObject {
     }
     @discardableResult
     func setDays(_ text: String) -> Bool {
+        if RemoteServices.shared.forced.contains("archiveDays"), let value = RemoteServices.shared.effective["archiveDays"] as? Int, text != String(value) { return false }
         guard !text.isEmpty, text.allSatisfy({ $0.isASCII && $0.isNumber }),
               let value = Int(text), (1...90).contains(value) else { return false }
         days = value; defaults.set(value, forKey: "activity.archive.days"); return true

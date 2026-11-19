@@ -938,3 +938,18 @@ HTTP 或 HTTPS 订阅链接|HTTP or HTTPS subscription URL
 从图片识别|Read from image
 连接电脑|Connect to computer
 将发送|To send
+更多|More
+反馈已保存在本机，联网后自动发送。|Your feedback is saved locally and will be sent when connected.
+反馈已收到：|Feedback received: 
+发现新版本|New version available
+所选截图|Selected screenshot
+无法添加截图。|Unable to add the screenshot.
+无法添加此诊断文件。|Unable to add this diagnostic file.
+此设置已由应用配置调整。|This setting has been adjusted by application configuration.
+添加截图|Add screenshot
+诊断文件|Diagnostic file
+请填写反馈内容，并检查附件后重试。|Enter your feedback and check the attachments before trying again.
+请选择 5 MiB 以内的诊断文件。|Choose a diagnostic file no larger than 5 MiB.
+从文件选择|Choose a file
+生成并添加|Generate and attach
+无法生成诊断文件，请缩小日期范围后重试。|Unable to create the diagnostic file. Try a shorter date range.

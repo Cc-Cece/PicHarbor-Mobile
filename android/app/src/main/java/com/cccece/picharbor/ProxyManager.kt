@@ -228,6 +228,7 @@ class ProxyManager(private val graph:AppGraph) {
                     ensureActive()
                     val next=if(result.isSuccess)ProxyHealth(result.getOrThrow(),true) else ProxyHealth(null,false,System.currentTimeMillis()+300000)
                     health.update{it+(name to next)}
+                    graph.remote.observe("proxy.result",JSONObject().put("operation","probe").put("success",result.isSuccess).apply{next.milliseconds?.let{put("latency_ms",it)}})
                 }
                 message.value="测速完成"
             } catch(e:CancellationException){message.value="测速已停止";throw e}

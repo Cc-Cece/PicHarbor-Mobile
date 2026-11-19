@@ -34,12 +34,12 @@ fun PipelineSettingsScreen(vm:HarborViewModel,data:HarborUiData) {
     Column(Modifier.fillMaxSize()) {
         PageTitle("高级配置",vm)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            ToggleRow("使用自定义配置","自动模式根据设备资源调整",custom,enabled=!vm.busy){custom=it}
-            if(custom)keys.forEachIndexed{i,_->OutlinedTextField(fields[i],{value->fields=ArrayList(fields).apply{this[i]=value}},label={LText(titles[i])},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),isError=fields[i].toIntOrNull() !in ranges[i],supportingText={LText("${ranges[i].first}–${ranges[i].last}",localize=false)},modifier=Modifier.fillMaxWidth())}
+            RemoteSettingGuard("pipelineMode"){ToggleRow("使用自定义配置","自动模式根据设备资源调整",custom,enabled=!vm.busy){custom=it}}
+            if(custom)keys.forEachIndexed{i,_->RemoteSettingGuard("pipelineLimits"){OutlinedTextField(fields[i],{value->fields=ArrayList(fields).apply{this[i]=value}},label={LText(titles[i])},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),isError=fields[i].toIntOrNull() !in ranges[i],supportingText={LText("${ranges[i].first}–${ranges[i].last}",localize=false)},modifier=Modifier.fillMaxWidth())}}
             Helper("准备照片 1–3，上传检查、保存与配对、云端确认 1–4，文件上传 1–12，缓存 128–8192 MB。")
             Helper("所有模式保留内存、温度和可用空间保护。配置将在下一批任务开始时应用，不中断正在上传的文件。")
-            ToggleRow("自定义任务保护","限制等待和重试，不改变已确认的备份",customProtection,enabled=!vm.busy){customProtection=it}
-            if(customProtection)executionKeys.forEachIndexed{i,_->OutlinedTextField(protection[i],{value->protection=ArrayList(protection).apply{this[i]=value}},label={LText(executionTitles[i])},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),isError=protection[i].toIntOrNull() !in executionRanges[i],supportingText={LText("${executionRanges[i].first}–${executionRanges[i].last}",localize=false)},modifier=Modifier.fillMaxWidth())}
+            RemoteSettingGuard("executionPolicy"){ToggleRow("自定义任务保护","限制等待和重试，不改变已确认的备份",customProtection,enabled=!vm.busy){customProtection=it}}
+            if(customProtection)executionKeys.forEachIndexed{i,_->RemoteSettingGuard("executionPolicy"){OutlinedTextField(protection[i],{value->protection=ArrayList(protection).apply{this[i]=value}},label={LText(executionTitles[i])},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),isError=protection[i].toIntOrNull() !in executionRanges[i],supportingText={LText("${executionRanges[i].first}–${executionRanges[i].last}",localize=false)},modifier=Modifier.fillMaxWidth())}}
             Button(onClick={
                 val value=JSONObject();keys.forEachIndexed{i,key->value.put(key,fields[i].toIntOrNull()?:defaults[i])}
                 val policy=JSONObject();executionKeys.forEachIndexed{i,key->policy.put(key,protection[i].toIntOrNull()?:executionDefaults[i])}

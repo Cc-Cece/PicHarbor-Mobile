@@ -285,6 +285,7 @@ final class HarborModel: ObservableObject {
     #endif
     func backgroundWake() async {
         await boot(); await library.refresh(); await automaticScan(); await pump()
+        await RemoteServices.shared.flushIfNeeded()
         while !workers.isEmpty && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
     }
     func boot() async {
@@ -393,6 +394,8 @@ final class HarborModel: ObservableObject {
     private func persist(_ value: BackupJob, recoveryBudget: BackupRecoveryBudget? = nil) async throws {
         guard let store else { throw HarborError("DATABASE_ERROR") }
         if lookupJob(value.id)?.activityHidden == true && value.activityHidden != true { return }
+        let previousError = lookupJob(value.id)?.error ?? ""
+        let previousAttempts = lookupJob(value.id)?.attempts ?? 0
         var value = value; value.updated = Date()
         value.recovery = recoveryBudget ?? lookupJob(value.id)?.recovery ?? value.recovery
         let previousEvents = value.recovery?.events ?? []
@@ -404,6 +407,10 @@ final class HarborModel: ObservableObject {
         updateAssetStates([value])
         do {
             try await store.save(value, kind: "job", id: value.id, revision: value.generation ?? 0)
+            RemoteServices.shared.projectBatch(value, model: self)
+            if !value.error.isEmpty && (value.error != previousError || value.attempts != previousAttempts) { RemoteServices.shared.observe("error.operation", fields: ["error_code": value.error, "stage": value.failureStage ?? "unknown"]) }
+            if value.state == .completed { RemoteServices.shared.event("backup_success", id: value.id, duration: (value.completedAt ?? Date()).timeIntervalSince(value.created) * 1000, bytes: value.resources.reduce(Int64(0)) { $0 + $1.size }) }
+            if value.state == .failed { RemoteServices.shared.event("backup_failure", id: value.id) }
             MobileDiagnostics.shared.record("task.persisted", task: value.id, fields: ["state": value.state.rawValue, "error_code": value.error, "resource_count": value.resources.count, "revision": value.generation ?? 0])
         }
         catch { fatalStorage(error); throw error }
@@ -423,6 +430,7 @@ final class HarborModel: ObservableObject {
             }
             jobs = updated; updateAssetStates(chunk)
             try await store.saveJobs(chunk)
+            for value in chunk { RemoteServices.shared.projectBatch(value, model: self) }
             await Task.yield()
         }
     }
@@ -431,6 +439,7 @@ final class HarborModel: ObservableObject {
         let saved = try await store.load(AccountSettings.self, kind: "settings")
         settingsGeneration = Dictionary(uniqueKeysWithValues: saved.map { ($0.account, $0.generation ?? 0) })
         settings = saved.first(where: { $0.account == account })?.settings ?? BackupSettings()
+        settings = await RemoteServices.shared.resolve(settings, scope: account)
         uploadPlans = [:]
         cloudClocks = [:]; cloudSeconds = [:]; transferClocks = [:]; transferWatches = [:]; lastBudgetSweep = -100
         rateTracker = TransferRateTracker(); uploadWorkload = nil; transferProgress = [:]; progressTimes = [:]
@@ -459,6 +468,9 @@ final class HarborModel: ObservableObject {
     func saveSettings() async -> Bool {
         guard let store else { notice = L10n.text("设置尚未就绪，请等待初始化完成后重试。"); return false }
         let targetAccount = account
+        let resolved = await RemoteServices.shared.resolve(settings, scope: targetAccount)
+        guard account == targetAccount else { return false }
+        settings = resolved
         let snapshot = settings
         do {
             let generation = (settingsGeneration[targetAccount] ?? 0) + 1

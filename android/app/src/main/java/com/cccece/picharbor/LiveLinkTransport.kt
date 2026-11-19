@@ -228,6 +228,7 @@ class LiveLinkTransport(private val graph:AppGraph) {
         if(progress.value.busy)return
         progress.value=LinkProgress(true,"正在连接电脑…")
         job=graph.scope.launch {
+            val metricId=java.util.UUID.randomUUID().toString();val metricStart=System.currentTimeMillis()
             var offer="";var peer:Session?=null
             val temporary=File(graph.app.cacheDir,"computer-send/${java.util.UUID.randomUUID()}").apply{mkdirs()}
             try {
@@ -273,9 +274,12 @@ class LiveLinkTransport(private val graph:AppGraph) {
                 }
                 json(peer,"POST","/v1/offers/$offer/finish",JSONObject().put("success",true))
                 progress.value=progress.value.copy(status="发送完成",fraction=1f)
+                graph.remote.event("transfer_success",metricId,System.currentTimeMillis()-metricStart)
             } catch(error:CancellationException){progress.value=progress.value.copy(status="发送已停止");throw error}
-            catch(_:Exception){progress.value=progress.value.copy(status="发送失败，请检查地址、配对信息、权限和网络后重试",failed=progress.value.failed+1)}
+            catch(_:Exception){progress.value=progress.value.copy(status="发送失败，请检查地址、配对信息、权限和网络后重试",failed=progress.value.failed+1);graph.remote.event("transfer_failure",metricId)}
             finally {
+                val outcome=progress.value
+                graph.remote.observe("transfer.batch",JSONObject().put("status",if(outcome.fraction>=1f)"completed" else if(outcome.failed>0)"failed" else "cancelled").put("media_success",outcome.sent+outcome.existing).put("media_failed",outcome.failed).put("duration_ms",System.currentTimeMillis()-metricStart),metricId)
                 val connection=peer
                 if(offer.isNotBlank()&&progress.value.fraction<1f&&connection!=null)withContext(NonCancellable){runCatching{json(connection,"POST","/v1/offers/$offer/finish",JSONObject().put("success",false))}}
                 temporary.listFiles()?.forEach{it.delete()};temporary.delete();progress.value=progress.value.copy(busy=false)

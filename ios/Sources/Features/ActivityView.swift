@@ -17,10 +17,10 @@ struct ActivityView: View {
             Section {
                 Picker(L10n.text("备份来源"), selection: Binding(get: { archived ? archivedSourceRaw : sourceRaw }, set: { if archived { archivedSourceRaw = $0 } else { sourceRaw = $0 } })) {
                     ForEach(ActivitySource.allCases) { Text($0.title).tag($0.rawValue) }
-                }.pickerStyle(.segmented).accessibilityIdentifier("activity.source")
+                }.pickerStyle(.segmented).accessibilityIdentifier("activity.source").remoteSetting(archived ? "archiveSource" : "activitySource")
                 if !archived { Picker(L10n.text("任务状态"), selection: $statusRaw) {
                     ForEach(ActivityStatus.allCases) { Text($0.title).tag($0.rawValue) }
-                }.pickerStyle(.segmented).accessibilityIdentifier("activity.status") }
+                }.pickerStyle(.segmented).accessibilityIdentifier("activity.status").remoteSetting("activityStatus") }
             }
             if batches.isEmpty && (!archived || model.engine.records.isEmpty) { ContentUnavailableView(L10n.text("暂无符合条件的任务"), systemImage: "clock", description: Text(L10n.text("调整来源或状态筛选，查看其他备份活动。"))) }
             ForEach(batches.prefix(displayed)) { batch in
