@@ -17,20 +17,27 @@ struct RemoteMoreView: View {
     @State private var message = ""
     @State private var nextPage: [String: Any] = [:]
     @State private var navigating = false
+    @State private var visible = false
+    @State private var loadingAction: String?
+    @State private var showActionProgress = false
     var body: some View {
         List {
             ForEach(Array((page["items"] as? [[String: Any]] ?? []).enumerated()), id: \.offset) { _, item in node(item) }
-            if busy { ProgressView() }
+            if busy && loadingAction == nil { ProgressView() }
         }
         .navigationTitle(page["title"] as? String ?? L10n.text("更多"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $navigating) { RemoteMoreView(providedPage: nextPage) }
+        .onAppear { visible = true; applyRootPage(remote.morePage) }
+        .onDisappear { visible = false }
         .task {
-            if providedPage == nil { await remote.refresh(model, force: true) }
+            if providedPage != nil, let action { remote.observe("feature.action", fields: ["tool_id": action]) }
+            if providedPage == nil && action == nil { remote.observe("feature.action", fields: ["tool_id": "more.open"]) }
             await loadPage()
+            if providedPage == nil && action == nil { Task { await remote.refresh(model, force: true) } }
         }
-        .onChange(of: remote.revision) { _, _ in Task { await loadPage() } }
-        .refreshable { await remote.refresh(model, force: true); await loadPage() }
+        .onReceive(remote.$morePage) { applyRootPage($0) }
+        .refreshable { if providedPage == nil { await remote.refresh(model, force: true); await loadPage() } }
         .sheet(isPresented: $generatingDiagnostic) {
             NavigationStack {
                 MobileDiagnosticsView(onAttach: { url in
@@ -75,10 +82,20 @@ struct RemoteMoreView: View {
     private func loadPage() async {
         if let providedPage { page = providedPage; return }
         guard values.isEmpty, files.isEmpty, !busy else { return }
-        let result = await remote.call(action == nil ? "more" : "action", action.map { ["action": $0] } ?? [:])
+        if action == nil {
+            applyRootPage(remote.morePage)
+            if remote.morePage.isEmpty { await remote.loadMorePage() }
+            return
+        }
+        let result = await remote.call("action", ["action": action ?? ""])
         guard values.isEmpty, files.isEmpty, !busy else { return }
         if let next = result["page"] as? [String: Any], next["type"] as? String == "dialog" { remote.enqueueDialog(next) }
         else { page = result["page"] as? [String: Any] ?? [:] }
+    }
+    private func applyRootPage(_ value: [String: Any]) {
+        guard visible, providedPage == nil, action == nil, !value.isEmpty, values.isEmpty, files.isEmpty, !busy else { return }
+        if value["type"] as? String == "dialog" { remote.enqueueDialog(value) }
+        else { page = value }
     }
     private func binding(_ id: String) -> Binding<String> { Binding(get: { values[id] ?? "" }, set: { values[id] = String($0.prefix(10000)) }) }
     private func node(_ item: [String: Any]) -> AnyView {
@@ -108,6 +125,10 @@ struct RemoteMoreView: View {
             })
         case "button":
             if let value = item["url"] as? String, value.hasPrefix("https://"), let url = URL(string: value) { return AnyView(Link(title, destination: url)) }
+            if let inline = item["page"] as? [String: Any] {
+                if inline["type"] as? String == "dialog" { return AnyView(Button(title) { remote.enqueueDialog(inline) }.disabled(busy)) }
+                return AnyView(NavigationLink(title) { RemoteMoreView(action: item["action"] as? String, providedPage: inline) }.disabled(busy))
+            }
             if item["capability"] as? String == "feedback.submit" {
                 return AnyView(Button(title) { Task {
                     guard !busy else { return }; busy = true; defer { busy = false }
@@ -118,13 +139,15 @@ struct RemoteMoreView: View {
                     } else { message = L10n.text("请填写反馈内容，并检查附件后重试。") }
                 } }.disabled(busy))
             }
-            return AnyView(Button(title) { Task {
-                guard !busy else { return }; busy = true; defer { busy = false }
+            return AnyView(Button { Task {
+                guard !busy else { return }; busy = true; loadingAction = id
+                let indicator = Task { try? await Task.sleep(for: .milliseconds(300)); if !Task.isCancelled { showActionProgress = true } }
+                defer { indicator.cancel(); busy = false; loadingAction = nil; showActionProgress = false }
                 let result = await remote.call("action", ["action": item["action"] as? String ?? "", "values": values])
                 guard let next = result["page"] as? [String: Any] else { return }
                 if next["type"] as? String == "dialog" { remote.enqueueDialog(next) }
                 else { nextPage = next; navigating = true }
-            } }.disabled(busy))
+            } } label: { HStack { Text(title); Spacer(); if loadingAction == id && showActionProgress { ProgressView().controlSize(.small) } } }.disabled(busy))
         case "loading": return AnyView(ProgressView())
         default: return AnyView(EmptyView())
         }
