@@ -45,6 +45,16 @@ jobs:
           python tools/verify_engine.py
       - name: Build and test the release APK
         run: gradle :app:assembleRelease :app:testReleaseUnitTest :app:lintRelease "-PbuildPython=$(which python)" --console=plain
+      - name: Retain test and lint reports
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-checks-${{ github.sha }}
+          path: |
+            android/app/build/reports/lint-results-release.*
+            android/app/build/test-results/testReleaseUnitTest/*.xml
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify APK identity and bundled runtime
         run: |
           python tools/verify_signing.py --apk app/build/outputs/apk/release/app-release.apk

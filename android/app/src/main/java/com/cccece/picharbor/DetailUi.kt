@@ -93,6 +93,7 @@ fun DetailScreen(vm:HarborViewModel,data:HarborUiData,sheetMode:Boolean=false) {
 @Composable
 fun DetailRow(label:String,value:String,valueLocalized:Boolean=true){Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.SpaceBetween){LText(label,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);LText(value,style=MaterialTheme.typography.bodyMedium,modifier=Modifier.padding(start=15.dp),localize=valueLocalized)};HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)}
 @Composable
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 fun VideoPlayer(uri:String,autoplay:Boolean=false) {
     val context=LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
