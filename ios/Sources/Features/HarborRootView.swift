@@ -73,6 +73,8 @@ struct HarborRootView: View {
         } message: { Text(L10n.message(model.notice)) }
         .onChange(of: scenePhase) { _, phase in
             MobileDiagnostics.shared.record("app.lifecycle", fields: ["foreground": phase == .active])
+            if phase == .active { RemoteServices.shared.lifecycle("foreground") }
+            if phase == .background { RemoteServices.shared.lifecycle("background") }
             if phase == .active {
                 Task { await RemoteServices.shared.flushIfNeeded() }
                 link.startPresence()

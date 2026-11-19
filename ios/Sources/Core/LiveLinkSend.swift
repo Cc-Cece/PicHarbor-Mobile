@@ -396,14 +396,20 @@ final class LiveLinkController: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             let metricID = UUID().uuidString, metricStart = Date()
+            var metricStatus = "completed"
+            defer {
+                if trackSend { RemoteServices.shared.observe("transfer.batch", fields: ["status": metricStatus == "completed" && self.failedCount + self.skipped > 0 ? "failed" : metricStatus, "media_success": self.sentCount + self.hadCount, "media_failed": self.failedCount + self.skipped, "duration_ms": Date().timeIntervalSince(metricStart) * 1000], id: metricID) }
+            }
             do {
                 try await work()
                 if trackSend && self.sentCount + self.hadCount + self.failedCount > 0 {
                     RemoteServices.shared.event(self.failedCount > 0 || self.skipped > 0 ? "transfer_failure" : "transfer_success", id: metricID, duration: Date().timeIntervalSince(metricStart) * 1000)
                 }
             } catch is CancellationError {
+                metricStatus = "cancelled"
                 if ticket == self.run { self.message = L10n.text("已取消") }
             } catch {
+                metricStatus = "failed"
                 if trackSend { RemoteServices.shared.event("transfer_failure", id: metricID) }
                 if ticket == self.run {
                     self.connection = nil

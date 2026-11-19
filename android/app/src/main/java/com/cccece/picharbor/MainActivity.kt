@@ -93,8 +93,8 @@ class MainActivity:ComponentActivity() {
         if(Build.VERSION.SDK_INT>=34)list+=Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
         permissions.launch(list.toTypedArray())
     }
-    override fun onStart(){super.onStart();model.graph.visible.set(true);model.graph.computer.startPresence()}
-    override fun onStop(){model.graph.visible.set(false);model.graph.computer.stop();super.onStop()}
+    override fun onStart(){super.onStart();model.graph.visible.set(true);model.graph.remote.lifecycle("foreground");model.graph.computer.startPresence()}
+    override fun onStop(){model.graph.visible.set(false);model.graph.remote.lifecycle("background");model.graph.computer.stop();super.onStop()}
     override fun onNewIntent(intent:Intent){
         super.onNewIntent(intent);setIntent(intent)
         if(intent.getBooleanExtra("open_history",false))model.tab("activity")

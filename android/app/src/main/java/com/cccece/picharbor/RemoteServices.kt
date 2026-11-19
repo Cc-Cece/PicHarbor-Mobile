@@ -58,7 +58,7 @@ class RemoteServices(private val graph:AppGraph) {
     val update=MutableStateFlow<JSONObject?>(null)
     val revision=MutableStateFlow(0)
     private val context get()=graph.app
-    private fun metadata()=JSONObject().put("platform","android").put("version",BuildConfig.VERSION_NAME).put("language",java.util.Locale.getDefault().toLanguageTag()).put("system",android.os.Build.VERSION.RELEASE)
+    private fun metadata()=JSONObject().put("platform","android").put("version",BuildConfig.VERSION_NAME).put("build",BuildConfig.VERSION_CODE.toString()).put("channel",if(BuildConfig.DEBUG)"debug" else "release").put("language",java.util.Locale.getDefault().toLanguageTag()).put("system",android.os.Build.VERSION.RELEASE)
     suspend fun call(action:String,payload:JSONObject=JSONObject()):JSONObject=gate.withLock {
         withContext(Dispatchers.IO){
             if(!graph.engineReady)return@withContext JSONObject().put("ok",false)
@@ -72,6 +72,7 @@ class RemoteServices(private val graph:AppGraph) {
         val result=call("startup");startupUi.value=result.optJSONObject("ui")
         resolve()
         call("sync");resolve();update.value=call("update").optJSONObject("update");revision.value++
+        graph.scope.launch { while(isActive) { runCatching { snapshotFacts(); if(graph.visible.get())call("lifecycle",JSONObject().put("phase","heartbeat")); call("flush") }; delay(60_000) } }
         val work=androidx.work.PeriodicWorkRequestBuilder<RemoteFeedbackWorker>(15,java.util.concurrent.TimeUnit.MINUTES).setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()).build()
         androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork("remote-feedback",androidx.work.ExistingPeriodicWorkPolicy.KEEP,work)
         graph.preferences.flow.map{it.account}.distinctUntilChanged().drop(1).collect{resolve()}
@@ -95,6 +96,31 @@ class RemoteServices(private val graph:AppGraph) {
         return hint!=null||RemotePolicies.locked(context,key,account)
     }
     fun event(name:String,id:String="",durationMs:Long?=null,bytes:Long?=null){graph.scope.launch{call("event",JSONObject().put("name",name).put("id",id).put("duration_ms",durationMs).put("bytes",bytes))}}
+    /** Only bounded, explicit facts cross this bridge; remote code chooses aggregation. */
+    fun observe(name:String,fields:JSONObject=JSONObject(),id:String=""){graph.scope.launch{call("observe",JSONObject().put("name",name).put("fields",fields).put("id",id))}}
+    fun lifecycle(phase:String){graph.scope.launch{graph.startup.await();if(started.get())call("lifecycle",JSONObject().put("phase",phase))}}
+    private suspend fun snapshotFacts(){
+        val settings=graph.preferences.get()
+        val power=context.getSystemService(android.os.PowerManager::class.java)
+        val memory=android.app.ActivityManager.MemoryInfo().also{context.getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(it)}
+        val connectivity=context.getSystemService(android.net.ConnectivityManager::class.java)
+        val caps=connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+        val network=when {caps==null->"offline";caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)->"wifi";caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)->"cellular";else->"other"}
+        val environment=JSONObject().put("os_version",android.os.Build.VERSION.RELEASE).put("brand",android.os.Build.BRAND.take(80)).put("model_family",android.os.Build.MODEL.take(80))
+            .put("abi",android.os.Build.SUPPORTED_ABIS.firstOrNull()?:"unknown").put("ram_bucket",when{memory.totalMem<3L*1024*1024*1024->"under3gb";memory.totalMem<6L*1024*1024*1024->"3to6gb";else->"6gbplus"})
+            .put("network",network).put("low_memory",memory.lowMemory).put("power_save",power.isPowerSaveMode).put("battery_optimization",if(power.isIgnoringBatteryOptimizations(context.packageName))"unrestricted" else "optimized")
+            .put("font_scale",context.resources.configuration.fontScale.toDouble()).put("orientation",if(context.resources.configuration.orientation==2)"landscape" else "portrait").put("auth_state",if(settings.account.isBlank())"signed_out" else "selected")
+        call("observe",JSONObject().put("name","environment.snapshot").put("fields",environment))
+        call("observe",JSONObject().put("name","preferences.snapshot").put("fields",JSONObject().put("auto_backup",settings.auto).put("wifi_only",settings.wifi).put("quality",settings.quality).put("live_mode",settings.livePhotoPairing).put("album_mode",settings.albumMode).put("concurrency_mode",settings.pipelineMode).put("theme",settings.theme).put("proxy_enabled",settings.proxyEnabled)))
+        call("observe",JSONObject().put("name","backup.conditions").put("fields",JSONObject().put("blocked_reason",when{settings.account.isBlank()->"signed_out";!settings.auto->"auto_off";network=="offline"->"offline";settings.wifi&&network!="wifi"->"wifi_required";else->"ready"})))
+    }
+    suspend fun batchFact(job:BackupJob,items:List<BackupItem>){
+        val fields=JSONObject().put("status",when(job.state){"needs_attention"->"failed";"ended"->"cancelled";"auth_required","queued"->"waiting";else->job.state})
+            .put("source",if(job.automatic)"automatic" else "manual").put("quality",job.quality).put("live_mode",job.liveStrategy)
+            .put("media_total",items.size).put("media_success",items.count{it.state in setOf("done","exists")}).put("media_failed",items.count{it.state in setOf("failed","album_pending")}).put("media_skipped",items.count{it.state=="filename_skipped"})
+            .put("bytes",items.filter{it.state in setOf("done","exists")}.sumOf{it.bytes}).put("retries",items.sumOf{maxOf(0,it.attempt-1)}).put("confirm_ms",items.sumOf{it.confirmationElapsedMs})
+        call("observe",JSONObject().put("name","backup.batch").put("id",job.id).put("fields",fields))
+    }
     suspend fun feedback(values:Map<String,String>,files:List<RemoteFile>):JSONObject {
         val account=graph.preferences.get().account
         val ref=MessageDigest.getInstance("SHA-256").digest((account+context.noBackupFilesDir.path).toByteArray()).joinToString(""){"%02x".format(it)}

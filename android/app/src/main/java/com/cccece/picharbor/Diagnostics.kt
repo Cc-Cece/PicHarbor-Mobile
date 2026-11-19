@@ -164,6 +164,10 @@ object Diagnostics {
     fun event(name:String,context:DiagnosticContext=root,attrs:JSONObject=JSONObject(),level:String="INFO",producer:String="kotlin-main") {
         if(app==null||!name.matches(Regex("[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+")))return
         runCatching {
+            if(name=="error.captured") {
+                val application=app as? PicHarborApp
+                application?.graph?.remote?.observe("error.operation",JSONObject().put("error_code",attrs.optString("code","UNKNOWN")).put("stage",attrs.optString("phase","unknown")).put("exception_type",attrs.optString("error_type","unknown")))
+            }
             val now=SystemClock.elapsedRealtime()
             val key=context.span
             val permitWait=name.startsWith("wait.")&&attrs.optString("kind")=="permit"
