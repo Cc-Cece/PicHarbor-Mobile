@@ -57,7 +57,7 @@ struct BackupPreferencesView: View {
                     model.settings.pipelineMode = value
                 })) { ForEach(PipelineMode.allCases, id: \.self) { Text($0.title).tag($0) } }.pickerStyle(.menu).remoteSetting("pipelineMode")
                 if model.settings.pipelineMode == .custom {
-                    NavigationLink(L10n.text("高级配置")) { PipelineAdvancedView() }
+                    NavigationLink(L10n.text("高级配置")) { PipelineAdvancedView() }.remoteSetting("pipelineOverrides").remoteSetting("executionOverrides")
                 }
             }
             Section {
@@ -68,7 +68,7 @@ struct BackupPreferencesView: View {
                     if value == "automatic" { model.settings.live = .automatic }
                     else if model.settings.live == .automatic { model.settings.live = .applePair }
                 })) { Text(L10n.text("自动（推荐）")).tag("automatic"); Text(L10n.text("手动")).tag("manual") }.pickerStyle(.menu).accessibilityIdentifier("preferences.live").remoteSetting("live")
-                if model.settings.live != .automatic { NavigationLink(L10n.text("高级实况设置")) { LivePhotoAdvancedView() } }
+                if model.settings.live != .automatic { NavigationLink(L10n.text("高级实况设置")) { LivePhotoAdvancedView() }.remoteSetting("live") }
             } header: { Text(L10n.text("Live Photo 备份方式")) } footer: {
                 Text(L10n.text("逐项识别并保留原有形式；不会自动转换格式。切换只影响新任务。"))
             }
@@ -130,7 +130,7 @@ struct BackupScopeView: View {
             }
             Section {
                 LabeledContent(L10n.text("将备份"), value: L10n.text("{0} 项", [String(describing: scopeCount)]))
-                Toggle(L10n.text("开启自动备份"), isOn: $automatic).id("automatic-backup")
+                Toggle(L10n.text("开启自动备份"), isOn: $automatic).id("automatic-backup").remoteSetting("automatic")
                 LabeledContent(L10n.text("上传画质"), value: model.settings.quality.title)
                 LabeledContent("Live Photo", value: model.settings.live.title)
                 LabeledContent(L10n.text("网络"), value: model.settings.wifiOnly ? L10n.text("仅 Wi-Fi") : L10n.text("Wi-Fi 与蜂窝"))
@@ -164,8 +164,8 @@ struct NetworkPreferencesView: View {
     var body: some View {
         Form {
             Section {
-                Toggle(L10n.text("仅通过 Wi-Fi 备份"), isOn: $model.settings.wifiOnly)
-                Toggle(L10n.text("自动备份"), isOn: Binding(get: { model.settings.automatic }, set: { value in if value { scope = true } else { model.settings.automatic = false } }))
+                Toggle(L10n.text("仅通过 Wi-Fi 备份"), isOn: $model.settings.wifiOnly).remoteSetting("wifiOnly")
+                Toggle(L10n.text("自动备份"), isOn: Binding(get: { model.settings.automatic }, set: { value in if value { scope = true } else { model.settings.automatic = false } })).remoteSetting("automatic")
                 NavigationLink(L10n.text("检查备份范围")) { BackupScopeView() }
                 if model.updatingNetwork { ProgressView(L10n.text("正在为未完成任务应用网络设置…")) }
             } footer: { Text(L10n.text("网络设置立即生效，手动暂停的任务保持暂停。正在上传的文件可能需要重传。关闭自动备份不会取消已有任务。")) }
@@ -305,7 +305,7 @@ struct ActivityArchiveSettingsView: View {
                 HStack {
                     Text(L10n.text("归档天数"))
                     Spacer()
-                    TextField(L10n.text("归档天数"), text: $days).keyboardType(.numberPad).focused($editingDays).multilineTextAlignment(.trailing).frame(width: 80).accessibilityIdentifier("archive.days")
+                    TextField(L10n.text("归档天数"), text: $days).keyboardType(.numberPad).focused($editingDays).multilineTextAlignment(.trailing).frame(width: 80).accessibilityIdentifier("archive.days").remoteSetting("archiveDays")
                 }
                 // Do NOT wrap this row in LabeledContent and do NOT add a
                 // tap gesture on it: LabeledContent merges the field into

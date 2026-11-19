@@ -29,7 +29,10 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 @MainActor final class LanguagePreferences: ObservableObject {
     static let shared = LanguagePreferences()
     @Published var selection: String {
-        didSet { UserDefaults.standard.set(selection, forKey: "picharbor.language") }
+        didSet {
+            if RemoteServices.shared.forced.contains("language"), let value = RemoteServices.shared.effective["language"] as? String, selection != value { selection = value; return }
+            UserDefaults.standard.set(selection, forKey: "picharbor.language")
+        }
     }
     init() { selection = UserDefaults.standard.string(forKey: "picharbor.language") ?? "system" }
 }

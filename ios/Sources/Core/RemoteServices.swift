@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import CryptoKit
+import UIKit
 
 @MainActor final class RemoteServices: ObservableObject {
     static let shared = RemoteServices()
@@ -10,6 +11,7 @@ import CryptoKit
     @Published var revision = 0
     @Published private(set) var forced = Set<String>()
     @Published private(set) var hints: [String: [String: Any]] = [:]
+    private(set) var effective: [String: Any] = [:]
     private var policyScope = ""
     private var started = false
     private let queue = DispatchQueue(label: "io.picharbor.remote")
@@ -42,8 +44,12 @@ import CryptoKit
         values["language"] = LanguagePreferences.shared.selection
         values["archiveEnabled"] = ActivityArchivePreferences.shared.enabled
         values["archiveDays"] = ActivityArchivePreferences.shared.days
+        values["pipelineMode"] = settings.pipelineMode?.rawValue ?? "automatic"
+        values["pipelineOverrides"] = values["pipelineOverrides"] ?? NSNull()
+        values["executionOverrides"] = values["executionOverrides"] ?? NSNull()
         let result = await call("resolve", ["scope": scope, "values": values])
         guard result["ok"] as? Bool == true, let effective = result["values"] as? [String: Any] else { return settings }
+        self.effective = effective
         forced = Set(result["forced"] as? [String] ?? [])
         hints = result["hints"] as? [String: [String: Any]] ?? [:]
         policyScope = result["scope"] as? String ?? ""
@@ -57,10 +63,10 @@ import CryptoKit
     func intercept(_ key: String) {
         guard let hint = hints.removeValue(forKey: key) else { return }
         hintMessage = hint["message"] as? String ?? L10n.text("此设置已由应用配置调整。")
-        let scope = policyScope, receipt = hint["id"] as? String ?? ""
+        let scope = hint["scope"] as? String ?? policyScope, receipt = hint["id"] as? String ?? ""
         Task { _ = await call("hint", ["scope": scope, "receipt": receipt]) }
     }
-    func event(_ name: String) { Task { _ = await call("event", ["name": name]) } }
+    func event(_ name: String, id: String = "") { Task { _ = await call("event", ["name": name, "id": id]) } }
     func submit(_ values: [String: String], files: [RemoteAttachment], account: String) async -> [String: Any] {
         var payload = values
         payload["email"] = account

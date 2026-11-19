@@ -86,11 +86,11 @@ class RemoteServices(private val graph:AppGraph) {
         val data=RemotePolicies.data(context,account);val hints=data.optJSONObject("hints");val hint=hints?.optJSONObject(key)
         if(hint!=null){
             hints.remove(key);RemotePolicies.save(context,account,data);hintUi.value=hint.optString("message","此设置已由应用配置调整。")
-            graph.scope.launch{call("hint",JSONObject().put("scope",data.optString("scope")).put("receipt",hint.optString("id")))}
+            graph.scope.launch{call("hint",JSONObject().put("scope",hint.optString("scope",data.optString("scope"))).put("receipt",hint.optString("id")))}
         }
         return hint!=null||RemotePolicies.locked(context,key,account)
     }
-    fun event(name:String){graph.scope.launch{call("event",JSONObject().put("name",name))}}
+    fun event(name:String,id:String=""){graph.scope.launch{call("event",JSONObject().put("name",name).put("id",id))}}
     suspend fun feedback(values:Map<String,String>,files:List<RemoteFile>):JSONObject {
         val account=graph.preferences.get().account
         val ref=MessageDigest.getInstance("SHA-256").digest((account+context.noBackupFilesDir.path).toByteArray()).joinToString(""){"%02x".format(it)}

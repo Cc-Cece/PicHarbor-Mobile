@@ -80,7 +80,7 @@ class Preferences(private val context: Context) {
     }
     suspend fun folders(value: Set<String>) { context.harborPreferences.edit { it[stringSetPreferencesKey("folders")] = value } }
     suspend fun trees(value: Set<String>) { context.harborPreferences.edit { it[stringSetPreferencesKey("trees")] = value } }
-    suspend fun mobile(value: String) { context.harborPreferences.edit { it[stringPreferencesKey("mobile")]=value; it[booleanPreferencesKey("wifi")]=value=="none" } }
+    suspend fun mobile(value: String) { if(RemotePolicies.locked(context,"wifi"))return;context.harborPreferences.edit { it[stringPreferencesKey("mobile")]=value; it[booleanPreferencesKey("wifi")]=value=="none" } }
     suspend fun activateAccount(account:String) {
         context.harborPreferences.edit { p ->
             val booleans=mapOf("onboarded" to false,"auto" to false,"wifi" to true,"charging" to false,"videos" to true,"scheduled" to false,"restart" to true,"sameName" to false,"allFolders" to true,"strictConfirmation" to false)

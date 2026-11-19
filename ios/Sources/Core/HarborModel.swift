@@ -404,6 +404,8 @@ final class HarborModel: ObservableObject {
         updateAssetStates([value])
         do {
             try await store.save(value, kind: "job", id: value.id, revision: value.generation ?? 0)
+            if value.state == .completed { RemoteServices.shared.event("backup_success", id: value.id) }
+            if value.state == .failed { RemoteServices.shared.event("backup_failure", id: value.id) }
             MobileDiagnostics.shared.record("task.persisted", task: value.id, fields: ["state": value.state.rawValue, "error_code": value.error, "resource_count": value.resources.count, "revision": value.generation ?? 0])
         }
         catch { fatalStorage(error); throw error }
@@ -460,7 +462,9 @@ final class HarborModel: ObservableObject {
     func saveSettings() async -> Bool {
         guard let store else { notice = L10n.text("设置尚未就绪，请等待初始化完成后重试。"); return false }
         let targetAccount = account
-        settings = await RemoteServices.shared.resolve(settings, scope: targetAccount)
+        let resolved = await RemoteServices.shared.resolve(settings, scope: targetAccount)
+        guard account == targetAccount else { return false }
+        settings = resolved
         let snapshot = settings
         do {
             let generation = (settingsGeneration[targetAccount] ?? 0) + 1

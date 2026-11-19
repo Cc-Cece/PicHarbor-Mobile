@@ -80,7 +80,7 @@ def mask_email(email):
 
 # Every key is a local native preference, never a setting chosen from a remote
 # method name. Tuples mean numeric limits, lists mean enumerated values.
-COMMON={'language':['system','zh-CN','zh-HK','zh-TW','zh-Hans','zh-Hant','en','en-US'],
+COMMON={'language':['system','zh-CN','zh-HK','zh-TW','zh-Hans','zh-Hant','yue-Hant-HK','en','en-US'],
  'appearance':['system','light','dark'],'palette':['system','lavender','sage','peach','blue','rose','teal','amber'],
  'quality':['original','saver','quota'],'pipelineMode':['automatic','custom','balanced','battery','fast','conservative'],
  'automatic':bool,'wifiOnly':bool,'syncAlbums':bool,'archiveEnabled':bool,'archiveDays':(1,90),
@@ -107,9 +107,13 @@ def valid(key,value,platform):
     if isinstance(rule,tuple):return type(value) in (int,float) and rule[0]<=value<=rule[1]
     if rule is dict or rule is str:
         if not isinstance(value,rule):return False
+        if value=='':return True
         try:obj=json.loads(value) if rule is str else value
         except ValueError:return False
-        return isinstance(obj,dict) and len(obj)<=20 and all(isinstance(k,str) and type(v) in (int,float) and 0<=v<=4096 for k,v in obj.items())
+        limits={'preparation':(1,3),'lookup':(1,4),'upload':(1,12),'commit':(1,4),'confirmation':(1,4),'bufferMB':(128,8192),'buffer_mb':(128,8192),
+                'retries':(0,10),'querySeconds':(15,300),'query_seconds':(15,300),'commitSeconds':(15,600),'commit_seconds':(15,600),'idleSeconds':(30,1800),'idle_seconds':(30,1800),'fileMinutes':(10,1440),'file_minutes':(10,1440),'cloudMinutes':(10,240),'cloud_minutes':(10,240)}
+        expected=({'preparation','lookup','upload','commit','confirmation','bufferMB' if platform=='ios' else 'buffer_mb'} if key in ('pipelineOverrides','pipelineLimits') else {'retries','querySeconds','commitSeconds','idleSeconds','fileMinutes','cloudMinutes'} if platform=='ios' else {'retries','query_seconds','commit_seconds','idle_seconds','file_minutes','cloud_minutes'})
+        return isinstance(obj,dict) and (not obj or set(obj)==expected) and all(k in limits and type(v) is int and limits[k][0]<=v<=limits[k][1] for k,v in obj.items())
     return isinstance(value,rule)
 
 class Remote:
@@ -133,7 +137,7 @@ class Remote:
         session=requests.Session()
         # A distinct session: never borrow Google auth/cookies or app proxy credentials.
         try:
-            r=session.request(method or ('POST' if payload is not None else 'GET'),ORIGIN+path,json=payload,data=data,headers=headers,timeout=(5,12),allow_redirects=False)
+            r=session.request(method or ('POST' if payload is not None else 'GET'),ORIGIN+path,json=payload,data=data,headers={'User-Agent':'PicHarbor-Remote/1','Accept':'application/json',**(headers or {})},timeout=(5,12),allow_redirects=False)
             if not r.ok:raise ValueError('SERVICE_'+str(r.status_code))
             if len(r.content)>524288:raise ValueError('RESPONSE_LIMIT')
             return r.json()
@@ -160,6 +164,7 @@ class Remote:
         namespace={'__builtins__':safe};deadline=time.monotonic()+2;steps=0
         def trace(frame,event,arg):
             nonlocal steps
+            frame.f_trace_opcodes = True
             steps+=1
             if steps>100000 or time.monotonic()>deadline:raise TimeoutError('SCRIPT_BUDGET')
             return trace
@@ -176,9 +181,15 @@ class Remote:
             self.event('script_failure');return None
         finally:sys.settrace(old)
 
-    def event(self,name):
+    def event(self,name,event_id=''):
         if name not in {'launch','active','backup_success','backup_failure','transfer_success','transfer_failure','tool_use','script_failure','update_failure'}:return
         day=datetime.date.today().isoformat();daily=self.state.setdefault('daily',{})
+        if event_id:
+            key=hashlib.sha256((name+str(event_id)).encode()).hexdigest()
+            seen=self.state.setdefault('events_seen',{})
+            if key in seen:return
+            seen[key]=day
+            self.state['events_seen']={k:d for k,d in seen.items() if (datetime.date.today()-datetime.date.fromisoformat(d)).days<30}
         if day not in daily:daily[day]={'id':str(uuid.uuid4()),'events':{}}
         daily[day]['events'][name]=min(100000,daily[day]['events'].get(name,0)+1)
         self.state['daily']={d:v for d,v in daily.items() if (datetime.date.today()-datetime.date.fromisoformat(d)).days<30}
@@ -194,6 +205,16 @@ class Remote:
             self.state['pending_feedback'].remove(item);self.save()
 
     def resolve(self,current,scope):
+        device_keys=set(REGISTRY['windows']) if self.platform=='windows' else {'language','theme','palette','archiveEnabled','archiveDays','activitySource','activityStatus','activityGrouping','archiveSource'}
+        result={'ok':True,'values':{},'personal':{},'forced':[],'hints':{}}
+        for part,key in (({k:v for k,v in current.items() if k in device_keys},'device'),({k:v for k,v in current.items() if k not in device_keys},scope)):
+            value=self._resolve(part,key)
+            for hint in value['hints'].values():hint['scope']=value['scope']
+            for field in ('values','personal','hints'):result[field].update(value[field])
+            result['forced'].extend(value['forced']);result['scope']=value['scope']
+        return result
+
+    def _resolve(self,current,scope):
         platform=self.platform;scope=hashlib.sha256(str(scope).encode()).hexdigest()[:24]
         profiles=self.state.setdefault('profiles',{});old=profiles.setdefault(platform+':'+scope,{'personal':{},'forced':{},'receipts':[],'seen':[]})
         personal=old['personal'];effective={k:v for k,v in current.items() if k in REGISTRY.get(platform,{})};hints={};forced={}
@@ -302,7 +323,7 @@ def dispatch(home,action,payload='{}'):
         elif action=='action':r.event('tool_use');result={'ok':True,'page':r.script('handle_action',v.get('action',''),v.get('values',{})) or {'title':'更多','items':[]}}
         elif action=='resolve':result=r.resolve(v.get('values',{}),v.get('scope','device'))
         elif action=='hint':r.hint(v.get('scope',''),v.get('receipt',''));result={'ok':True}
-        elif action=='event':r.event(v.get('name'));result={'ok':True}
+        elif action=='event':r.event(v.get('name'),v.get('id',''));result={'ok':True}
         elif action=='feedback':result=r.feedback(v.get('values',{}),v.get('files',[]))
         elif action=='update':result={'ok':True,'update':r.content.get('updates',{}).get(r.platform)}
         else:raise ValueError('UNKNOWN_ACTION')
