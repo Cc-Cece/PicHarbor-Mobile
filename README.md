@@ -38,6 +38,8 @@ The app has four main tabs: **Photos, Backup, Activity, and Settings**. Backgrou
 
 ## Quick Start
 
+The **More** page contains publisher-signed tools, initially the official community and feedback. Diagnostics are in **Settings → About**. The service receives a random installation ID and coarse usage counts, without photo names, Google credentials or full Google email addresses. Feedback may include a locally masked account hint and attachments you select; screenshots are re-encoded and diagnostic archives are sanitized before upload. Remote configuration can apply a preference once or keep it locked until withdrawn.
+
 | Platform | Requirements | Package |
 | --- | --- | --- |
 | Android | Android 10+, ARM64 | APK; CI produces a Debug preview with a separate application ID |
