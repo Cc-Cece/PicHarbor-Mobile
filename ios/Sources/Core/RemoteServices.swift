@@ -11,6 +11,7 @@ import SelfRefreshKit
     @Published var hintMessage = ""
     @Published var update: [String: Any]?
     @Published var revision = 0
+    @Published private(set) var morePage: [String: Any] = [:]
     @Published private(set) var forced = Set<String>()
     @Published private(set) var hints: [String: [String: Any]] = [:]
     private(set) var effective: [String: Any] = [:]
@@ -41,6 +42,7 @@ import SelfRefreshKit
     func start(_ model: HarborModel) async {
         guard !started, model.engine.ready else { return }
         started = true
+        await loadMorePage()
         await refresh(model, force: true)
         startupUI = await call("startup")["ui"] as? [String: Any]
         if startupUI?["type"] as? String == "dialog", let dialog = startupUI { startupUI = nil; enqueueDialog(dialog) }
@@ -70,9 +72,15 @@ import SelfRefreshKit
                 _ = await model.saveSettings()
             }
             update = await call("update")["update"] as? [String: Any]
+            await loadMorePage()
             if result["changed"] as? Bool == true { revision += 1 }
             return true
         }
+    }
+    func loadMorePage() async {
+        guard HarborModel.shared.engine.ready else { return }
+        let result = await call("more", ["cached": true])
+        if let page = result["page"] as? [String: Any] { morePage = page }
     }
     func resolve(_ settings: BackupSettings, scope: String) async -> BackupSettings {
         guard let encoded = try? JSONEncoder().encode(settings), var values = (try? JSONSerialization.jsonObject(with: encoded)) as? [String: Any] else { return settings }
@@ -151,6 +159,7 @@ import SelfRefreshKit
             let completed = await call("dialog_complete", ["dialog": dialog, "button": selected["id"] as? String ?? ""])
             guard completed["ok"] as? Bool == true else { return }
             dialogQueue.removeFirst()
+            await loadMorePage()
             if let address = selected["url"] as? String, let url = URL(string: address) { await UIApplication.shared.open(url) }
             try? await Task.sleep(for: .milliseconds(400))
         }
