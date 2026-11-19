@@ -59,7 +59,7 @@ fun ArchiveSettingsScreen(vm:HarborViewModel,data:HarborUiData) {
     ProductPage("活动记录",vm) {
         ProductSection(footer="归档只改变活动列表，不删除照片或备份记录。") {
             ToggleRow("自动归档","仅归档已完成的任务",data.settings.archiveEnabled,enabled=!vm.busy){vm.setBoolean("archiveEnabled",it)}
-            OutlinedTextField(value=days,onValueChange={days=it},label={LText("保留天数")},isError=days.toIntOrNull() !in 1..90,supportingText={LText("1–90",localize=false)},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),modifier=Modifier.fillMaxWidth().padding(16.dp))
+            RemoteSettingGuard("archiveDays"){OutlinedTextField(value=days,onValueChange={days=it},label={LText("保留天数")},isError=days.toIntOrNull() !in 1..90,supportingText={LText("1–90",localize=false)},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Number,imeAction=ImeAction.Done),keyboardActions=KeyboardActions(onDone={focus.clearFocus()}),modifier=Modifier.fillMaxWidth().padding(16.dp))}
             ProductAction("保存",enabled=!vm.busy&&days.toIntOrNull() in 1..90){days.toIntOrNull()?.let{vm.setInteger("archiveDays",it)}}
         }
         ProductSection {SettingsRow("归档记录",onClick={vm.navigate("archives")})}

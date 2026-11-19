@@ -538,7 +538,7 @@ class BackupRepository(private val graph:AppGraph) {
                 }
                 Diagnostics.event("job.state_changed",jobDiagnostic,JSONObject().put("state",state))
                 graph.dao.putJob(job.copy(state=state,completedAt=if(state in setOf("paused","waiting","auth_required","queued"))0 else System.currentTimeMillis()))
-                updated.filter{it.state in setOf("done","exists","failed")}.forEach{graph.remote.event(if(it.state=="failed")"backup_failure" else "backup_success",it.id)}
+                updated.filter{it.state in setOf("done","exists","failed")}.forEach{graph.remote.event(if(it.state=="failed")"backup_failure" else "backup_success",it.id,(it.completedAt.takeIf{at->at>0}?:System.currentTimeMillis())-job.created,it.bytes)}
                 if(!job.automatic&&state in setOf("completed","needs_attention")&&!graph.visible.get()) {
                     TransferNotifications.completed(graph.app,job,updated)
                 }

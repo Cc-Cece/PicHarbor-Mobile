@@ -14,6 +14,7 @@ import UIKit
     private(set) var effective: [String: Any] = [:]
     private var policyScope = ""
     private var started = false
+    private var lastFlush = Date.distantPast
     private let queue = DispatchQueue(label: "io.picharbor.remote")
     private var home: String { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("PicHarbor").path }
     func call(_ action: String, _ values: [String: Any] = [:]) async -> [String: Any] {
@@ -44,6 +45,9 @@ import UIKit
         values["language"] = LanguagePreferences.shared.selection
         values["archiveEnabled"] = ActivityArchivePreferences.shared.enabled
         values["archiveDays"] = ActivityArchivePreferences.shared.days
+        values["activitySource"] = UserDefaults.standard.string(forKey: "activity.source.v2") ?? "all"
+        values["activityStatus"] = UserDefaults.standard.string(forKey: "activity.status.v2") ?? "all"
+        values["archiveSource"] = UserDefaults.standard.string(forKey: "activity.archive.source.v1") ?? "all"
         values["pipelineMode"] = settings.pipelineMode?.rawValue ?? "automatic"
         values["pipelineOverrides"] = values["pipelineOverrides"] ?? NSNull()
         values["executionOverrides"] = values["executionOverrides"] ?? NSNull()
@@ -54,6 +58,9 @@ import UIKit
         hints = result["hints"] as? [String: [String: Any]] ?? [:]
         policyScope = result["scope"] as? String ?? ""
         for (key, value) in effective { values[key] = value }
+        for (key, stored) in ["activitySource": "activity.source.v2", "activityStatus": "activity.status.v2", "archiveSource": "activity.archive.source.v1"] {
+            if let value = effective[key] as? String { UserDefaults.standard.set(value, forKey: stored) }
+        }
         if let language = effective["language"] as? String, AppLanguage(rawValue: language) != nil, language != LanguagePreferences.shared.selection { LanguagePreferences.shared.selection = language }
         if let enabled = effective["archiveEnabled"] as? Bool, enabled != ActivityArchivePreferences.shared.enabled { ActivityArchivePreferences.shared.enabled = enabled }
         if let days = effective["archiveDays"] as? Int, days != ActivityArchivePreferences.shared.days { ActivityArchivePreferences.shared.setDays(String(days)) }
@@ -66,7 +73,14 @@ import UIKit
         let scope = hint["scope"] as? String ?? policyScope, receipt = hint["id"] as? String ?? ""
         Task { _ = await call("hint", ["scope": scope, "receipt": receipt]) }
     }
-    func event(_ name: String, id: String = "") { Task { _ = await call("event", ["name": name, "id": id]) } }
+    func event(_ name: String, id: String = "", duration: Double? = nil, bytes: Int64? = nil) {
+        Task { var payload: [String: Any] = ["name": name, "id": id]; if let duration { payload["duration_ms"] = duration }; if let bytes { payload["bytes"] = bytes }; _ = await call("event", payload) }
+    }
+    func flushIfNeeded() async {
+        guard Date().timeIntervalSince(lastFlush) > 60, HarborModel.shared.engine.ready else { return }
+        lastFlush = Date()
+        _ = await call("flush")
+    }
     func submit(_ values: [String: String], files: [RemoteAttachment], account: String) async -> [String: Any] {
         var payload = values
         payload["email"] = account
@@ -97,11 +111,15 @@ extension View {
     func remoteSetting(_ key: String) -> some View { modifier(RemoteSettingGuard(key: key)) }
 }
 struct RemoteAlertHost: View {
+    @EnvironmentObject private var model: HarborModel
     @ObservedObject private var remote = RemoteServices.shared
     var body: some View {
         Color.clear.frame(width: 0, height: 0)
-            .alert(remote.startupUI?["title"] as? String ?? "PicHarbor", isPresented: Binding(get: { remote.startupUI != nil || !remote.hintMessage.isEmpty }, set: { if !$0 { remote.startupUI = nil; remote.hintMessage = "" } })) {
+            .alert(remote.startupUI?["title"] as? String ?? "PicHarbor", isPresented: Binding(get: { (remote.startupUI != nil && remote.startupUI?["items"] == nil) || !remote.hintMessage.isEmpty }, set: { if !$0 { remote.startupUI = nil; remote.hintMessage = "" } })) {
                 Button(L10n.text("好")) { remote.startupUI = nil; remote.hintMessage = "" }
             } message: { Text(remote.hintMessage.isEmpty ? remote.startupUI?["message"] as? String ?? "" : remote.hintMessage) }
+            .sheet(isPresented: Binding(get: { remote.startupUI?["items"] != nil }, set: { if !$0 { remote.startupUI = nil } })) {
+                NavigationStack { RemoteMoreView(providedPage: remote.startupUI).toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.text("关闭")) { remote.startupUI = nil } } } }.environmentObject(model)
+            }
     }
 }

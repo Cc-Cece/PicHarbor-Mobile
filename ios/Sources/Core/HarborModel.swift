@@ -285,6 +285,7 @@ final class HarborModel: ObservableObject {
     #endif
     func backgroundWake() async {
         await boot(); await library.refresh(); await automaticScan(); await pump()
+        await RemoteServices.shared.flushIfNeeded()
         while !workers.isEmpty && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
     }
     func boot() async {
@@ -404,7 +405,7 @@ final class HarborModel: ObservableObject {
         updateAssetStates([value])
         do {
             try await store.save(value, kind: "job", id: value.id, revision: value.generation ?? 0)
-            if value.state == .completed { RemoteServices.shared.event("backup_success", id: value.id) }
+            if value.state == .completed { RemoteServices.shared.event("backup_success", id: value.id, duration: (value.completedAt ?? Date()).timeIntervalSince(value.created) * 1000, bytes: value.resources.reduce(Int64(0)) { $0 + $1.size }) }
             if value.state == .failed { RemoteServices.shared.event("backup_failure", id: value.id) }
             MobileDiagnostics.shared.record("task.persisted", task: value.id, fields: ["state": value.state.rawValue, "error_code": value.error, "resource_count": value.resources.count, "revision": value.generation ?? 0])
         }

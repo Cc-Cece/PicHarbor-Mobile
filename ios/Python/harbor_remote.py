@@ -4,6 +4,7 @@ No Google client, credentials or image library is imported here. Native hosts
 serialize calls and supply only user-selected attachments and local preferences.
 """
 import base64
+from contextlib import closing
 import datetime
 import hashlib
 import io
@@ -11,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import sys
 import time
 import uuid
@@ -19,6 +21,8 @@ import zipfile
 ORIGIN = 'https://api.akihito.dpdns.org'
 PUBLIC = ('iuedfHRaV44kApnWvkzd4I8845b5jR3fF-J4ZhT-4d8', 'VnI6wfaBJwEcODfDuEm8Hw1ck7ucrVV6xfMRma3YH2U')
 KEY_ID = 'picharbor-2026'
+_CONTENT_CACHE = {}
+EVENT_NAMES={'launch','active','backup_success','backup_failure','transfer_success','transfer_failure','tool_use','script_failure','update_failure','duration_under_1m','duration_1m_10m','duration_over_10m','size_under_10mb','size_10mb_100mb','size_over_100mb'}
 MAX_FILE = 5 * 1024 * 1024
 P = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff
 N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551
@@ -87,9 +91,9 @@ COMMON={'language':['system','zh-CN','zh-HK','zh-TW','zh-Hans','zh-Hant','yue-Ha
  'activitySource':['all','manual','automatic'],'activityStatus':['all','unfinished','completed','failed'],'activityGrouping':['batch','day'],
  'archiveSource':['all','manual','automatic']}
 REGISTRY={
- 'ios':{**COMMON,'live':['automatic','motion','applePair','appleReconcile'],'edits':['both','original','current'],
+ 'ios':{**{k:v for k,v in COMMON.items() if k not in ('palette','activityGrouping')},'language':['system','zh-Hans','en','yue-Hant-HK'],'live':['automatic','motion','applePair','appleReconcile'],'edits':['both','original','current'],
         'pipelineOverrides':dict,'executionOverrides':dict},
- 'android':{**COMMON,'theme':['system','light','dark'],'auto':bool,'wifi':bool,'restart':bool,
+ 'android':{**{k:v for k,v in COMMON.items() if k not in ('appearance','automatic','wifiOnly','syncAlbums','activityGrouping')},'theme':['system','light','dark'],'auto':bool,'wifi':bool,'restart':bool,
         'albumMode':['none','folder'],'livePhotoPairing':['automatic','original','stepwise','motion'],
         'concurrency':(1,3),'timeout':(30,120),'retries':(0,3),'pipelineLimits':str,'executionPolicy':str},
  'windows':{'CurrentLanguage':['zh-CN','zh-HK','en-US'],'GroupMediaByDevice':bool,'SyncExifToLastWriteTime':bool,'SyncExifToCreationTime':bool,
@@ -101,6 +105,7 @@ REGISTRY={
         'AndroidBackupIncludePhotos':bool,'AndroidBackupIncludeVideos':bool,'ReadTimeoutSeconds':(10,300)}}
 
 def valid(key,value,platform):
+    if value is None and platform=='ios' and key in ('pipelineOverrides','executionOverrides'):return True
     rule=REGISTRY.get(platform,{}).get(key)
     if rule is None:return False
     if isinstance(rule,list):return value in rule
@@ -126,8 +131,16 @@ class Remote:
         self.content={};self.envelope=None
         for name in ('content.json','previous.json'):
             try:
-                envelope=_read(self.root/name,{})
-                if envelope:self.content=verify(envelope);self.envelope=envelope;break
+                path=self.root/name
+                if not path.exists():continue
+                info=path.stat();stamp=(str(path),info.st_mtime_ns,info.st_size)
+                cached=_CONTENT_CACHE.get(stamp)
+                if cached:self.envelope,self.content=cached;break
+                envelope=_read(path,{})
+                if envelope:
+                    self.content=verify(envelope);self.envelope=envelope
+                    if len(_CONTENT_CACHE)>=8:_CONTENT_CACHE.clear()
+                    _CONTENT_CACHE[stamp]=(envelope,self.content);break
             except (ValueError,KeyError,TypeError,IndexError):continue
 
     def save(self):_write(self.root/'state.json',self.state)
@@ -149,6 +162,11 @@ class Remote:
         if data['revision']==self.content.get('revision',0):return {'ok':True,'changed':False}
         # Compile/validate before activation; startup code is not executed now.
         compile(data.get('script',''),'remote-content','exec')
+        previous_content=self.content;previous_failures=self.state.get('script_failures',0)
+        self.content=data;self.state['script_failures']=0
+        checked=self.script('build_more')
+        self.content=previous_content;self.state['script_failures']=previous_failures
+        if checked is None:raise ValueError('CONTENT_VALIDATION_FAILED')
         if self.envelope:_write(self.root/'previous.json',self.envelope)
         _write(self.root/'content.json',envelope);self.content=data;self.envelope=envelope
         self.state['script_failures']=0
@@ -156,8 +174,11 @@ class Remote:
 
     def script(self,entry,action='',values=None):
         if not self.content:return {'title':'更多','items':[]} if entry=='build_more' else None
-        if self.state.get('script_failures',0)>=3:return {'title':'更多','items':[]} if entry=='build_more' else None
+        fallback=self.state.get('script_failures',0)>=3
         source=self.content.get('script','')
+        if fallback:
+            try:source=verify(_read(self.root/'previous.json',{})).get('script','')
+            except (ValueError,KeyError,TypeError,IndexError):return {'title':'更多','items':[]} if entry=='build_more' else None
         # Publisher-owned Python with a deliberately small host surface.
         # This is a capability discipline, not a claim of hostile-code isolation.
         safe={k:__builtins__[k] for k in ('str','int','float','bool','len','dict','list','tuple','set','min','max','sum','range','enumerate','zip','round','abs','isinstance','sorted') } if isinstance(__builtins__,dict) else {k:getattr(__builtins__,k) for k in ('str','int','float','bool','len','dict','list','tuple','set','min','max','sum','range','enumerate','zip','round','abs','isinstance','sorted')}
@@ -174,32 +195,49 @@ class Remote:
             fn=namespace.get(entry)
             result=fn(action,values or {},dict(self.context)) if entry=='handle_action' and fn else fn(dict(self.context)) if fn else None
             if result is not None:validate_page(result)
-            self.state['script_failures']=0
+            if not fallback:self.state['script_failures']=0
             return result
         except Exception:
             self.state['script_failures']=self.state.get('script_failures',0)+1
             self.event('script_failure');return None
         finally:sys.settrace(old)
 
-    def event(self,name,event_id=''):
-        if name not in {'launch','active','backup_success','backup_failure','transfer_success','transfer_failure','tool_use','script_failure','update_failure'}:return
+    def event(self,name,event_id='',duration_ms=None,size=None):
+        if name not in EVENT_NAMES:return
         day=datetime.date.today().isoformat();daily=self.state.setdefault('daily',{})
         if event_id:
             key=hashlib.sha256((name+str(event_id)).encode()).hexdigest()
-            seen=self.state.setdefault('events_seen',{})
-            if key in seen:return
-            seen[key]=day
-            self.state['events_seen']={k:d for k,d in seen.items() if (datetime.date.today()-datetime.date.fromisoformat(d)).days<30}
+            # Dedupe independently of the small outbox JSON: large libraries must
+            # not rewrite an ever-growing list of task IDs for every photo.
+            with closing(sqlite3.connect(self.root/'events.sqlite')) as db, db:
+                db.execute('PRAGMA journal_mode=WAL');db.execute('PRAGMA synchronous=NORMAL')
+                db.execute('CREATE TABLE IF NOT EXISTS seen(id TEXT PRIMARY KEY,day TEXT NOT NULL)')
+                if db.execute('INSERT OR IGNORE INTO seen VALUES(?,?)',(key,day)).rowcount==0:return
+                if self.state.get('events_swept')!=day:
+                    db.execute('DELETE FROM seen WHERE day<?',((datetime.date.today()-datetime.timedelta(days=30)).isoformat(),));self.state['events_swept']=day
+            self.state.pop('events_seen',None)
         if day not in daily:daily[day]={'id':str(uuid.uuid4()),'events':{}}
-        daily[day]['events'][name]=min(100000,daily[day]['events'].get(name,0)+1)
+        previous=daily[day]['events'].get(name,0)
+        daily[day]['events'][name]=1 if name=='active' else min(100000,previous+1)
+        if daily[day]['events'][name]!=previous:daily[day]['id']=str(uuid.uuid4())
+        daily[day]['version']=str(self.context.get('version','unknown'))[:40]
+        if name in ('backup_success','transfer_success'):
+            if type(duration_ms) in (int,float) and 0<=duration_ms<=30*86400000:
+                bucket='duration_under_1m' if duration_ms<60000 else 'duration_1m_10m' if duration_ms<600000 else 'duration_over_10m'
+                daily[day]['events'][bucket]=min(100000,daily[day]['events'].get(bucket,0)+1)
+            if type(size) in (int,float) and 0<=size<=1024**4:
+                bucket='size_under_10mb' if size<10*1024**2 else 'size_10mb_100mb' if size<100*1024**2 else 'size_over_100mb'
+                daily[day]['events'][bucket]=min(100000,daily[day]['events'].get(bucket,0)+1)
         self.state['daily']={d:v for d,v in daily.items() if (datetime.date.today()-datetime.date.fromisoformat(d)).days<30}
 
     def flush(self):
         today=datetime.date.today().isoformat()
         for day,data in list(self.state.get('daily',{}).items()):
-            if day==today:continue
-            self.request('/v1/statistics',{'id':data['id'],'installation':self.state['installation'],'platform':self.platform,'version':str(self.context.get('version','unknown'))[:40],'day':day,'events':data['events']})
-            del self.state['daily'][day];self.save()
+            if data.get('sent')!=data['events']:
+                self.request('/v1/statistics',{'id':data['id'],'installation':self.state['installation'],'platform':self.platform,'version':data.get('version',str(self.context.get('version','unknown'))[:40]),'day':day,'events':data['events'],'environment':{k:str(self.context.get(k,''))[:32] for k in ('language','system','device_class')}})
+                data['sent']=dict(data['events'])
+            if day!=today:del self.state['daily'][day]
+            self.save()
         for item in list(self.state.get('pending_feedback',[])):
             result=self.request('/v1/feedback',item['payload']);self.upload_files(result['id'],item['payload']['request_id'],item.get('files',[]))
             self.state['pending_feedback'].remove(item);self.save()
@@ -240,7 +278,8 @@ class Remote:
     def feedback(self,values,files):
         body=str(values.get('body','')).strip();contact=str(values.get('contact','')).strip()
         if not body or len(body)>10000 or len(contact)>200:raise ValueError('INVALID_FEEDBACK')
-        ref=str(values.get('account_ref',''))
+        account_key=hashlib.sha256(str(values.get('email','')).encode()).hexdigest()
+        ref=self.state.setdefault('account_refs',{}).setdefault(account_key,str(uuid.uuid4())) if values.get('email') else ''
         payload={'request_id':str(uuid.uuid4()),'installation':self.state['installation'],'account_ref':ref[:64],
                  'account_hint':mask_email(values.get('email','')),'platform':self.platform,'version':str(self.context.get('version','unknown'))[:40], 'body':body,'contact':contact}
         queue=self.state.setdefault('pending_feedback',[])
@@ -252,10 +291,10 @@ class Remote:
             if not path.is_file() or not 0<path.stat().st_size<=MAX_FILE:raise ValueError('ATTACHMENT_SIZE')
             if kind=='diagnostic':
                 data=sanitize_diagnostic(path.read_bytes());target=self.root/(str(uuid.uuid4())+'.zip');target.write_bytes(data)
-                checked.append({'path':str(target),'kind':kind,'mime':'application/zip'})
+                checked.append({'id':str(uuid.uuid4()),'path':str(target),'kind':kind,'mime':'application/zip'})
             elif kind=='screenshot' and f.get('mime') in ('image/jpeg','image/png'):
                 # Native hosts decode/re-encode selected images without metadata first.
-                target=self.root/(str(uuid.uuid4())+'.jpg');target.write_bytes(path.read_bytes());checked.append({'path':str(target),'kind':kind,'mime':f['mime']})
+                target=self.root/(str(uuid.uuid4())+'.jpg');target.write_bytes(path.read_bytes());checked.append({'id':str(uuid.uuid4()),'path':str(target),'kind':kind,'mime':f['mime']})
         if sum(Path(f['path']).stat().st_size for f in checked)>4*MAX_FILE:raise ValueError('ATTACHMENT_SIZE')
         item={'payload':payload,'files':checked};queue.append(item);self.save()
         try:
@@ -267,8 +306,8 @@ class Remote:
         for f in files:
             path=Path(f['path'])
             if not path.exists():continue
-            data=path.read_bytes();ticket=self.request('/v1/attachments',{'feedback':fid,'request_id':rid,'kind':f['kind'],'mime':f['mime'],'bytes':len(data)})
-            self.request('/v1/attachments/'+ticket['id'],method='PUT',data=data,headers={'Content-Type':f['mime'],'Authorization':'Bearer '+ticket['token']})
+            data=path.read_bytes();ticket=self.request('/v1/attachments',{'feedback':fid,'request_id':rid,'file_id':f.setdefault('id',str(uuid.uuid4())),'kind':f['kind'],'mime':f['mime'],'bytes':len(data)})
+            if not ticket.get('uploaded'):self.request('/v1/attachments/'+ticket['id'],method='PUT',data=data,headers={'Content-Type':f['mime'],'Authorization':'Bearer '+ticket['token']})
             path.unlink(missing_ok=True)
 
 def validate_page(page,depth=0):
@@ -299,8 +338,10 @@ def sanitize_diagnostic(data):
                     try:row=json.loads(line)
                     except ValueError:continue
                     value={}
-                    for k in ('schema','level','producer','event','timestamp','time','ts','error_code','phase','duration_ms','elapsed_ms','bytes','count'):
-                        v=row.get(k)
+                    allowed=('schema','schema_version','level','producer','event','timestamp','time','ts','ts_utc','error_code','phase','duration_ms','elapsed_ms','bytes','count','status','attempt','retry_count','http_status','source_read_bytes','query_ms','upload_ms','commit_ms','duration_bucket','size_bucket')
+                    fields={**{k:v for k,v in row.get('attrs',{}).items() if k in allowed},**row} if isinstance(row.get('attrs'),dict) else row
+                    for k in allowed:
+                        v=fields.get(k)
                         if type(v) in (int,float,bool):value[k]=v
                         elif isinstance(v,str) and re.fullmatch(r'[A-Za-z0-9_.:+TZ -]{1,100}',v) and '@' not in v and 'http' not in v:value[k]=v
                     if value:safe.append(value)
@@ -318,14 +359,22 @@ def dispatch(home,action,payload='{}'):
             result=r.sync()
             try:r.flush()
             except Exception:pass
+        elif action=='flush':r.flush();result={'ok':True}
         elif action=='startup':r.event('launch');r.event('active');result={'ok':True,'ui':r.script('on_start')}
-        elif action=='more':result={'ok':True,'page':r.script('build_more') or {'title':'更多','items':[]}}
+        elif action=='more':
+            if not r.content:
+                try:r.sync()
+                except Exception:pass
+            result={'ok':True,'page':r.script('build_more') or {'title':'更多','items':[]}}
         elif action=='action':r.event('tool_use');result={'ok':True,'page':r.script('handle_action',v.get('action',''),v.get('values',{})) or {'title':'更多','items':[]}}
         elif action=='resolve':result=r.resolve(v.get('values',{}),v.get('scope','device'))
         elif action=='hint':r.hint(v.get('scope',''),v.get('receipt',''));result={'ok':True}
-        elif action=='event':r.event(v.get('name'),v.get('id',''));result={'ok':True}
+        elif action=='event':r.event(v.get('name'),v.get('id',''),v.get('duration_ms'),v.get('bytes'));result={'ok':True}
         elif action=='feedback':result=r.feedback(v.get('values',{}),v.get('files',[]))
-        elif action=='update':result={'ok':True,'update':r.content.get('updates',{}).get(r.platform)}
+        elif action=='update':
+            version=str(r.context.get('version',''))
+            field='updates' if '-' in version or version.startswith('0.') else 'stable_updates'
+            result={'ok':True,'update':r.content.get(field,r.content.get('updates',{})).get(r.platform)}
         else:raise ValueError('UNKNOWN_ACTION')
         r.save();return json.dumps(result,ensure_ascii=False)
     except Exception as e:
@@ -333,5 +382,7 @@ def dispatch(home,action,payload='{}'):
         return json.dumps({'ok':False,'error':code})
 
 if __name__=='__main__':
+    if hasattr(sys.stdin,'reconfigure'):sys.stdin.reconfigure(encoding='utf-8')
+    if hasattr(sys.stdout,'reconfigure'):sys.stdout.reconfigure(encoding='utf-8')
     request=json.load(sys.stdin)
     print(dispatch(request['home'],request['action'],request.get('payload',{})))

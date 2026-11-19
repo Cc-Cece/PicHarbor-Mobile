@@ -76,6 +76,11 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
     var rowRemoval by remember(data.settings.account,archived){mutableStateOf<List<String>>(emptyList())}
     BackHandler(revealed!=null){revealed=null}
     var limit by rememberSaveable{mutableIntStateOf(200)}
+    LaunchedEffect(data.settings.activitySource,data.settings.archiveSource,data.settings.activityStatus){
+        val context=vm.graph.app
+        if(RemotePolicies.locked(context,if(archived)"archiveSource" else "activitySource"))source=if(archived)data.settings.archiveSource else data.settings.activitySource
+        if(!archived&&RemotePolicies.locked(context,"activityStatus"))status=data.settings.activityStatus
+    }
     LaunchedEffect(source,status){vm.graph.preferences.string(if(archived)"archiveSource" else "activitySource",source);if(!archived)vm.graph.preferences.string("activityStatus",status)}
     val allItems=remember(data.items){data.items.filter{!it.hidden}.groupBy{it.jobId}}
     val visible=remember(allItems,archived,status){allItems.mapValues{(_,rows)->rows.filter{(it.archivedAt>0)==archived&&ActivityItemPolicy.matchesStatus(it,status)}}}
@@ -105,8 +110,8 @@ fun ActivityScreen(vm:HarborViewModel,data:HarborUiData,archived:Boolean=false) 
                 }
             }
         }
-        ProductSegments(source,listOf("all" to "全部来源","manual" to "手动","automatic" to "自动")){source=it}
-        if(!archived)ProductSegments(status,listOf("all" to "全部状态","unfinished" to "未完成","completed" to "已完成")){status=it}
+        ProductSegments(source,listOf("all" to "全部来源","manual" to "手动","automatic" to "自动")){if(!vm.graph.remote.intercept(if(archived)"archiveSource" else "activitySource"))source=it}
+        if(!archived)ProductSegments(status,listOf("all" to "全部状态","unfinished" to "未完成","completed" to "已完成")){if(!vm.graph.remote.intercept("activityStatus"))status=it}
         LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(1.dp)) {
             if(jobs.isEmpty())item{EmptyState("暂无符合条件的任务","调整来源或状态筛选，查看其他备份活动。",Icons.Outlined.History)}
             items(jobs.take(limit),key={it.id}){job->

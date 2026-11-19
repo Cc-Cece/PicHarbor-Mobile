@@ -74,6 +74,7 @@ struct HarborRootView: View {
         .onChange(of: scenePhase) { _, phase in
             MobileDiagnostics.shared.record("app.lifecycle", fields: ["foreground": phase == .active])
             if phase == .active {
+                Task { await RemoteServices.shared.flushIfNeeded() }
                 link.startPresence()
                 Task { await model.library.refresh(); await model.pump() }
             } else {
@@ -81,6 +82,7 @@ struct HarborRootView: View {
             }
             if phase == .background { HarborAppDelegate.schedule() }
         }
+        .onReceive(model.network.$connected) { connected in if connected { Task { await RemoteServices.shared.flushIfNeeded() } } }
         .onChange(of: link.incomingScope) { _, scope in
             guard let scope else { return }
             Task {

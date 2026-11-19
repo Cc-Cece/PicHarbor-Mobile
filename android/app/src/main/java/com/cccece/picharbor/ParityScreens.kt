@@ -66,9 +66,9 @@ private fun rememberFolderCounts(data:HarborUiData):Map<String,Int> = remember(d
 }
 
 @Composable
-fun ProductPage(title:String,vm:HarborViewModel,root:Boolean=false,actions:@Composable RowScope.()->Unit={},content:@Composable ColumnScope.()->Unit) {
+fun ProductPage(title:String,vm:HarborViewModel,root:Boolean=false,actions:@Composable RowScope.()->Unit={},onBack:(()->Unit)?=null,content:@Composable ColumnScope.()->Unit) {
     Column(Modifier.fillMaxSize()) {
-        PageTitle(title,vm,root,action=actions)
+        PageTitle(title,vm,root,back=onBack,action=actions)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             content();Spacer(Modifier.height(8.dp))
         }

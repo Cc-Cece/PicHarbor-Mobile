@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -46,7 +47,7 @@ object RemotePolicies {
             concurrency=number("concurrency",s.concurrency),timeout=number("timeout",s.timeout),retries=number("retries",s.retries),
             archiveEnabled=bool("archiveEnabled",s.archiveEnabled),archiveDays=number("archiveDays",s.archiveDays),activitySource=text("activitySource",s.activitySource),activityStatus=text("activityStatus",s.activityStatus),activityGrouping=text("activityGrouping",s.activityGrouping),archiveSource=text("archiveSource",s.archiveSource))
     }
-    val labels=mapOf("上传画质" to "quality","备份方式" to "livePhotoPairing","并发模式" to "pipelineMode","主题" to "theme","语言" to "language","主题颜色" to "palette","自动归档" to "archiveEnabled","归档时间" to "archiveDays","保留天数" to "archiveDays","保留相册分类" to "albumMode","仅 Wi-Fi" to "wifi","开启自动备份" to "auto","网络条件" to "wifi")
+    val labels=mapOf("上传画质" to "quality","备份方式" to "livePhotoPairing","并发模式" to "pipelineMode","主题" to "theme","语言" to "language","主题颜色" to "palette","自动归档" to "archiveEnabled","归档时间" to "archiveDays","归档天数" to "archiveDays","保留天数" to "archiveDays","保留相册分类" to "albumMode","仅 Wi-Fi" to "wifi","仅通过 Wi-Fi 备份" to "wifi","开启自动备份" to "auto","自动备份" to "auto","网络条件" to "wifi")
 }
 
 class RemoteServices(private val graph:AppGraph) {
@@ -61,7 +62,8 @@ class RemoteServices(private val graph:AppGraph) {
     suspend fun call(action:String,payload:JSONObject=JSONObject()):JSONObject=gate.withLock {
         withContext(Dispatchers.IO){
             if(!graph.engineReady)return@withContext JSONObject().put("ok",false)
-            payload.put("context",metadata())
+            val language=graph.preferences.get().language
+            payload.put("context",metadata().put("language",if(language=="system")java.util.Locale.getDefault().toLanguageTag() else language).put("device_class","phone"))
             runCatching{JSONObject(Python.getInstance().getModule("harbor_remote").callAttr("dispatch",File(context.noBackupFilesDir,"services").absolutePath,action,payload.toString()).toString())}.getOrDefault(JSONObject().put("ok",false))
         }
     }
@@ -70,6 +72,8 @@ class RemoteServices(private val graph:AppGraph) {
         val result=call("startup");startupUi.value=result.optJSONObject("ui")
         resolve()
         call("sync");resolve();update.value=call("update").optJSONObject("update");revision.value++
+        val work=androidx.work.PeriodicWorkRequestBuilder<RemoteFeedbackWorker>(15,java.util.concurrent.TimeUnit.MINUTES).setConstraints(androidx.work.Constraints.Builder().setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build()).build()
+        androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork("remote-feedback",androidx.work.ExistingPeriodicWorkPolicy.KEEP,work)
         graph.preferences.flow.map{it.account}.distinctUntilChanged().drop(1).collect{resolve()}
     }}
     suspend fun resolve(){
@@ -90,7 +94,7 @@ class RemoteServices(private val graph:AppGraph) {
         }
         return hint!=null||RemotePolicies.locked(context,key,account)
     }
-    fun event(name:String,id:String=""){graph.scope.launch{call("event",JSONObject().put("name",name).put("id",id))}}
+    fun event(name:String,id:String="",durationMs:Long?=null,bytes:Long?=null){graph.scope.launch{call("event",JSONObject().put("name",name).put("id",id).put("duration_ms",durationMs).put("bytes",bytes))}}
     suspend fun feedback(values:Map<String,String>,files:List<RemoteFile>):JSONObject {
         val account=graph.preferences.get().account
         val ref=MessageDigest.getInstance("SHA-256").digest((account+context.noBackupFilesDir.path).toByteArray()).joinToString(""){"%02x".format(it)}
@@ -98,16 +102,34 @@ class RemoteServices(private val graph:AppGraph) {
     }
 }
 data class RemoteFile(val path:String,val kind:String,val mime:String)
+val LocalRemotePolicyEnabled=staticCompositionLocalOf{true}
+@Composable
+fun RemoteSettingGuard(key:String,content:@Composable ()->Unit){
+    val context=LocalContext.current;val revision by RemotePolicies.revision.collectAsState()
+    val settings=(context.applicationContext as PicHarborApp).graph
+    val account=context.getSharedPreferences("remote_policies",Context.MODE_PRIVATE).getString("active","").orEmpty()
+    val data=remember(revision,account){RemotePolicies.data(context,account)}
+    val intercept=RemotePolicies.locked(context,key,account)||data.optJSONObject("hints")?.has(key)==true
+    Box{content();if(intercept)Box(Modifier.matchParentSize().clickable{settings.remote.intercept(key)})}
+}
+class RemoteFeedbackWorker(context:Context,parameters:androidx.work.WorkerParameters):androidx.work.CoroutineWorker(context,parameters){
+    override suspend fun doWork():Result {
+        val graph=(applicationContext as PicHarborApp).graph;graph.startup.await()
+        return if(graph.remote.call("flush").optBoolean("ok"))Result.success() else Result.retry()
+    }
+}
 
 @Composable
 fun RemoteAlerts(vm:HarborViewModel){
     val start by vm.graph.remote.startupUi.collectAsState();val hint by vm.graph.remote.hintUi.collectAsState()
-    if(start!=null)AlertDialog(onDismissRequest={vm.graph.remote.startupUi.value=null},title={Text(start!!.optString("title","PicHarbor"))},text={Text(start!!.optString("message"))},confirmButton={TextButton(onClick={vm.graph.remote.startupUi.value=null}){LText("好")}})
+    if(start?.has("items")==true)androidx.compose.ui.window.Dialog(onDismissRequest={vm.graph.remote.startupUi.value=null},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)){
+        Surface(Modifier.fillMaxSize()){Column{TextButton(onClick={vm.graph.remote.startupUi.value=null},modifier=Modifier.align(androidx.compose.ui.Alignment.End)){LText("关闭")};Box(Modifier.weight(1f)){RemoteMoreScreen(vm,start)}}}
+    }else if(start!=null)AlertDialog(onDismissRequest={vm.graph.remote.startupUi.value=null},title={Text(start!!.optString("title","PicHarbor"))},text={Text(start!!.optString("message"))},confirmButton={TextButton(onClick={vm.graph.remote.startupUi.value=null}){LText("好")}})
     if(hint.isNotEmpty())AlertDialog(onDismissRequest={vm.graph.remote.hintUi.value=""},text={Text(hint)},confirmButton={TextButton(onClick={vm.graph.remote.hintUi.value=""}){LText("好")}})
 }
 
 @Composable
-fun RemoteMoreScreen(vm:HarborViewModel){
+fun RemoteMoreScreen(vm:HarborViewModel,initialPage:JSONObject?=null){
     val context=LocalContext.current;val scope=rememberCoroutineScope();val revision by vm.graph.remote.revision.collectAsState()
     var page by remember{mutableStateOf(JSONObject().put("title","更多").put("items",JSONArray()))}
     var parents by remember{mutableStateOf(listOf<JSONObject>())}
@@ -117,7 +139,11 @@ fun RemoteMoreScreen(vm:HarborViewModel){
     fun choose(uri:Uri,kind:String){scope.launch {
         try {
             val f=withContext(Dispatchers.IO){
-                val bytes=context.contentResolver.openInputStream(uri)!!.use{it.readNBytes(10*1024*1024+1)}
+                val bytes=context.contentResolver.openInputStream(uri)!!.use{input->
+                    val output=java.io.ByteArrayOutputStream();val buffer=ByteArray(16384)
+                    while(true){val count=input.read(buffer);if(count<0)break;require(output.size()+count<=10*1024*1024);output.write(buffer,0,count)}
+                    output.toByteArray()
+                }
                 require(bytes.size<=10*1024*1024)
                 val output=File(context.cacheDir,"remote-${UUID.randomUUID()}${if(kind=="screenshot")".jpg" else ".zip"}")
                 if(kind=="screenshot"){
@@ -134,7 +160,7 @@ fun RemoteMoreScreen(vm:HarborViewModel){
     }}
     val images=rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()){uris->uris.take(3).forEach{choose(it,"screenshot")}}
     val logs=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->uri?.let{choose(it,"diagnostic")}}
-    LaunchedEffect(revision){val r=vm.graph.remote.call("more");r.optJSONObject("page")?.let{page=it;parents=emptyList()}}
+    LaunchedEffect(revision){if(initialPage!=null)page=initialPage else if(parents.isEmpty()&&values.isEmpty()){val r=vm.graph.remote.call("more");r.optJSONObject("page")?.let{page=it}}}
     androidx.activity.compose.BackHandler(parents.isNotEmpty()){page=parents.last();parents=parents.dropLast(1)}
     fun activate(item:JSONObject){
         if(busy)return
@@ -155,12 +181,12 @@ fun RemoteMoreScreen(vm:HarborViewModel){
             }finally{busy=false}
         }
     }
-    ProductPage(page.optString("title","更多"),vm){
+    CompositionLocalProvider(LocalRemotePolicyEnabled provides false){ProductPage(page.optString("title","更多"),vm,onBack={if(parents.isNotEmpty()){page=parents.last();parents=parents.dropLast(1)}else vm.back()}){
         val items=page.optJSONArray("items")?:JSONArray()
         RemoteItems(items,values,files,busy,::activate,{images.launch("image/*")},{logs.launch(arrayOf("application/zip"))},{f->files=files-f})
         if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
-    }
-    if(message.isNotEmpty())AlertDialog(onDismissRequest={message=""},text={Text(message)},confirmButton={TextButton(onClick={message=""}){LText("好")}})
+    }}
+    if(message.isNotEmpty())AlertDialog(onDismissRequest={message=""},text={LText(message)},confirmButton={TextButton(onClick={message=""}){LText("好")}})
 }
 
 @Composable

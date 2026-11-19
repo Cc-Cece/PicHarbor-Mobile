@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct RemoteMoreView: View {
     var action: String? = nil
+    var providedPage: [String: Any]? = nil
     @EnvironmentObject private var model: HarborModel
     @ObservedObject private var remote = RemoteServices.shared
     @State private var page: [String: Any] = [:]
@@ -21,6 +22,8 @@ struct RemoteMoreView: View {
         .navigationTitle(page["title"] as? String ?? L10n.text("更多"))
         .navigationBarTitleDisplayMode(.inline)
         .task(id: remote.revision) {
+            if let providedPage { page = providedPage; return }
+            if !values.isEmpty || !files.isEmpty { return }
             let result = await remote.call(action == nil ? "more" : "action", action.map { ["action": $0] } ?? [:])
             page = result["page"] as? [String: Any] ?? [:]
         }
