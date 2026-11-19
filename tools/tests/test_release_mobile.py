@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import plistlib
 import subprocess
@@ -20,6 +21,10 @@ class ReleaseTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name);self.override=patch.object(release,'ROOT',self.root);self.override.start();self.addCleanup(self.override.stop)
+        # Never allow fixture preflights to write to the real workflow's output
+        # file or change its publish flag when tests run inside GitHub Actions.
+        environment=patch.dict(os.environ,{'GITHUB_OUTPUT':str(self.root/'fixture-output')})
+        environment.start();self.addCleanup(environment.stop)
         self.write('android/app/build.gradle.kts','versionName = "2.0.0-alpha.17"\nversionCode = 17\n')
         self.write('ios/VERSION','0.2.42\n')
         self.write('ios/project.yml','MARKETING_VERSION: "0.2.42"\nCURRENT_PROJECT_VERSION: "46"\n')
@@ -77,6 +82,12 @@ class ReleaseTests(unittest.TestCase):
     def test_dry_run_does_not_publish_or_need_a_tag(self):
         with patch.object(release,'release_absent') as absence,contextlib.redirect_stdout(io.StringIO()):release.preflight('',False)
         absence.assert_not_called()
+
+    def test_fixture_output_is_confined_to_the_test_directory(self):
+        with contextlib.redirect_stdout(io.StringIO()):release.preflight('',False)
+        output=Path(os.environ['GITHUB_OUTPUT'])
+        self.assertEqual(output.parent,self.root)
+        self.assertIn('publish=false',output.read_text())
 
     def test_release_absence_fails_closed(self):
         with patch.dict('os.environ',{'GITHUB_REPOSITORY':'test/project'}):

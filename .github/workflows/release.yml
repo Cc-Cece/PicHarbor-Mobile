@@ -55,6 +55,8 @@ jobs:
           FLAGS=()
           if [[ "$PUBLISH" == true ]]; then FLAGS+=(--publish); fi
           python tools/release_mobile.py preflight --tag "$TAG" "${FLAGS[@]}"
+      - name: Verify release policy and shared sources independently
+        run: |
           python -m unittest discover -s tools/tests -v
           python tools/sync-core.py
 
