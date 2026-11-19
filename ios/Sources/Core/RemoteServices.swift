@@ -124,7 +124,11 @@ import SelfRefreshKit
                 let finished = jobs.allSatisfy { [.completed, .cancelled, .failed, .attention].contains($0.state) }
                 let failed = jobs.filter { $0.state == .failed || $0.state == .attention }.count
                 let status = jobs.allSatisfy { $0.state == .cancelled } ? "cancelled" : finished ? (failed > 0 ? "failed" : "completed") : jobs.contains { $0.state.active } ? "active" : "waiting"
-                let fields: [String: Any] = ["status": status, "source": jobs.first?.origin?.rawValue ?? "manual", "media_total": jobs.count, "media_success": jobs.filter { $0.state == .completed }.count, "media_failed": failed, "resource_total": jobs.reduce(0) { $0 + $1.resources.count }, "bytes": jobs.filter { $0.state == .completed }.reduce(Int64(0)) { total, job in total + job.resources.reduce(Int64(0)) { $0 + $1.size } }, "retries": jobs.reduce(0) { $0 + max(0, $1.attempts - 1) }]
+                var fields: [String: Any] = ["status": status, "source": jobs.first?.origin?.rawValue ?? "manual", "media_total": jobs.count, "media_success": jobs.filter { $0.state == .completed }.count, "media_failed": failed, "resource_total": jobs.reduce(0) { $0 + $1.resources.count }, "bytes": jobs.filter { $0.state == .completed }.reduce(Int64(0)) { total, job in total + job.resources.reduce(Int64(0)) { $0 + $1.size } }, "retries": jobs.reduce(0) { $0 + max(0, $1.attempts - 1) }]
+                for (metric, stages) in [("prepare_ms", ["preparation"]), ("upload_ms", ["upload"]), ("confirm_ms", ["commit", "confirmation"])] {
+                    let measured = jobs.flatMap { job in stages.compactMap { job.pipelineSeconds?[$0] } }
+                    if !measured.isEmpty { fields[metric] = measured.reduce(0, +) * 1000 }
+                }
                 _ = await self.call("observe", ["name": "backup.batch", "id": id, "fields": fields])
             }
         }
