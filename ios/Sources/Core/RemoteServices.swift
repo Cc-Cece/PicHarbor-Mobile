@@ -136,7 +136,7 @@ import SelfRefreshKit
                   let root = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive })?.windows.first(where: \.isKeyWindow)?.rootViewController else { return }
             var presenter = root
             while let presented = presenter.presentedViewController { presenter = presented }
-            guard !presenter.isBeingDismissed, !(presenter is UIAlertController) else {
+            guard !presenter.isBeingPresented, !presenter.isBeingDismissed, !(presenter is UIAlertController) else {
                 Task { try? await Task.sleep(for: .milliseconds(500)); await presentDialogs() }
                 return
             }
