@@ -135,7 +135,26 @@ fun RemoteMoreScreen(vm:HarborViewModel,initialPage:JSONObject?=null){
     var parents by remember{mutableStateOf(listOf<JSONObject>())}
     val values=remember{mutableStateMapOf<String,String>()};var files by remember{mutableStateOf(listOf<RemoteFile>())}
     var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")}
+    var diagnosticDialog by remember{mutableStateOf(false)}
     fun issue(text:String){message=text}
+    fun generateDiagnostic(range:LogRange){
+        if(busy||files.any{it.kind=="diagnostic"})return
+        scope.launch {
+            busy=true
+            try {
+                val attachment=withContext(Dispatchers.IO){
+                    val target=File(context.cacheDir,"remote-diagnostic-${UUID.randomUUID()}.zip")
+                    try {
+                        target.outputStream().use{Diagnostics.export(it,range)}
+                        require(target.length() in 1..5*1024*1024)
+                        RemoteFile(target.absolutePath,"diagnostic","application/zip")
+                    } catch(error:Exception){target.delete();throw error}
+                }
+                files=files+attachment
+            }catch(_:Exception){issue("无法生成诊断文件，请缩小日期范围后重试。")}
+            finally{busy=false}
+        }
+    }
     fun choose(uri:Uri,kind:String){scope.launch {
         try {
             val f=withContext(Dispatchers.IO){
@@ -183,26 +202,29 @@ fun RemoteMoreScreen(vm:HarborViewModel,initialPage:JSONObject?=null){
     }
     CompositionLocalProvider(LocalRemotePolicyEnabled provides false){ProductPage(page.optString("title","更多"),vm,onBack={if(parents.isNotEmpty()){page=parents.last();parents=parents.dropLast(1)}else vm.back()}){
         val items=page.optJSONArray("items")?:JSONArray()
-        RemoteItems(items,values,files,busy,::activate,{images.launch("image/*")},{logs.launch(arrayOf("application/zip"))},{f->files=files-f})
+        RemoteItems(items,values,files,busy,::activate,{images.launch("image/*")},{diagnosticDialog=true},{logs.launch(arrayOf("application/zip"))},{f->files=files-f})
         if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
     }}
+    DiagnosticExportDialog(visible=diagnosticDialog,onDismiss={diagnosticDialog=false},onExport={range->diagnosticDialog=false;generateDiagnostic(range)})
     if(message.isNotEmpty())AlertDialog(onDismissRequest={message=""},text={LText(message)},confirmButton={TextButton(onClick={message=""}){LText("好")}})
 }
 
 @Composable
-private fun RemoteItems(items:JSONArray,values:MutableMap<String,String>,files:List<RemoteFile>,busy:Boolean,activate:(JSONObject)->Unit,images:()->Unit,logs:()->Unit,remove:(RemoteFile)->Unit){
+@OptIn(ExperimentalLayoutApi::class)
+private fun RemoteItems(items:JSONArray,values:MutableMap<String,String>,files:List<RemoteFile>,busy:Boolean,activate:(JSONObject)->Unit,images:()->Unit,diagnostics:()->Unit,logs:()->Unit,remove:(RemoteFile)->Unit){
     for(i in 0 until items.length()){
         val item=items.optJSONObject(i)?:continue;val id=item.optString("id","field$i");val title=item.optString("title")
         when(item.optString("type")){
-            "group"->ProductSection(title){RemoteItems(item.optJSONArray("items")?:JSONArray(),values,files,busy,activate,images,logs,remove)}
+            "group"->ProductSection(title){RemoteItems(item.optJSONArray("items")?:JSONArray(),values,files,busy,activate,images,diagnostics,logs,remove)}
             "text","result"->Text(item.optString("text"),modifier=Modifier.padding(16.dp))
             "input","multiline","number"->OutlinedTextField(value=values[id].orEmpty(),onValueChange={if(it.length<=10000)values[id]=it},label={Text(title)},singleLine=item.optString("type")!="multiline",minLines=if(item.optString("type")=="multiline")5 else 1,modifier=Modifier.fillMaxWidth().padding(vertical=6.dp),enabled=!busy)
             "toggle"->Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(title);Switch(values[id]=="true",onCheckedChange={values[id]=it.toString()},enabled=!busy)}
             "select"->ProductSection(title){val options=item.optJSONArray("options")?:JSONArray();for(j in 0 until options.length()){val option=options.getJSONObject(j);TextButton(onClick={values[id]=option.optString("value")},enabled=!busy){Text((if(values[id]==option.optString("value"))"✓ " else "")+option.optString("title"))}}}
             "attachments"->ProductSection(title){
-                Row{
+                FlowRow{
                     TextButton(onClick=images,enabled=!busy&&files.count{it.kind=="screenshot"}<3){LText("添加截图")}
-                    TextButton(onClick=logs,enabled=!busy&&files.none{it.kind=="diagnostic"}){LText("诊断文件")}
+                    TextButton(onClick=diagnostics,enabled=!busy&&files.none{it.kind=="diagnostic"}){LText("诊断文件")}
+                    TextButton(onClick=logs,enabled=!busy&&files.none{it.kind=="diagnostic"}){LText("从文件选择")}
                 }
                 files.forEach{f->
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){

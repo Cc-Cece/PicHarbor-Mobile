@@ -65,7 +65,7 @@ fun MobileLocale(language:String,content:@Composable ()->Unit) {
     val tag=if(language=="system")system.toLanguageTag() else language
     val locale=Locale.forLanguageTag(tag)
     val localized=remember(configuration,tag){android.content.res.Configuration(configuration).apply{setLocale(locale)}}
-    val context=remember(original,localized){original.createConfigurationContext(localized)}
+    val context=remember(original,localized){mobileLocaleContext(original,localized)}
     val translator=remember(tag){
         val tableName=if(tag.startsWith("en"))"en" else if(tag.startsWith("yue")||tag.contains("HK",true))"yue-Hant-HK" else ""
         val table=if(tableName.isBlank())JSONObject() else original.assets.open("localization/$tableName.json").bufferedReader().use{JSONObject(it.readText())}
@@ -75,6 +75,11 @@ fun MobileLocale(language:String,content:@Composable ()->Unit) {
     }
     CompositionLocalProvider(LocalContext provides context,LocalConfiguration provides localized,LocalTranslation provides translator,content=content)
 }
+
+// Keep the Activity in the ContextWrapper chain. A detached configuration
+// context loses the owner used by Compose's activity-result launchers.
+internal fun mobileLocaleContext(original:android.content.Context,configuration:android.content.res.Configuration):android.content.Context =
+    android.view.ContextThemeWrapper(original,original.theme).apply{applyOverrideConfiguration(configuration)}
 
 @Composable
 fun LText(text:String,modifier:Modifier=Modifier,color:Color=Color.Unspecified,fontSize:TextUnit=TextUnit.Unspecified,
