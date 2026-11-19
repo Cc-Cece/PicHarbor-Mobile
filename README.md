@@ -51,6 +51,8 @@ Download the platform artifact from a successful [GitHub Actions](https://github
 
 ## iOS Auto-Renewal
 
+[Read the full setup and troubleshooting guide](guides/ios-auto-renewal.md) · [简体中文](guides/ios-auto-renewal.zh-CN.md)
+
 PicHarbor integrates [SelfRefreshKit](https://github.com/Cc-Cece/SelfRefreshKit). **Connect to a computer once for installation and pairing; subsequent routine renewals can run automatically on your iPhone without weekly computer connections.**
 
 1. Use [SelfRefreshSetup](https://github.com/Cc-Cece/SelfRefreshKit/tree/master/tools/SelfRefreshSetup) to sign and install the IPA and write the pairing records. Download the tool from [SelfRefreshKit Releases](https://github.com/Cc-Cece/SelfRefreshKit/releases).

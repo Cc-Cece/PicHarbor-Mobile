@@ -51,6 +51,8 @@
 
 ## iOS 自动续签
 
+[查看完整配置与故障处理教程](guides/ios-auto-renewal.zh-CN.md) · [English](guides/ios-auto-renewal.md)
+
 PicHarbor 内置 [SelfRefreshKit](https://github.com/Cc-Cece/SelfRefreshKit)。**首次连接电脑完成安装和配对后，日常续签可在 iPhone 上自动完成，无需每周连接电脑。**
 
 1. 使用 [SelfRefreshSetup](https://github.com/Cc-Cece/SelfRefreshKit/tree/master/tools/SelfRefreshSetup) 在电脑上签名安装 IPA，并写入配对记录；工具可从 [SelfRefreshKit Releases](https://github.com/Cc-Cece/SelfRefreshKit/releases) 下载。

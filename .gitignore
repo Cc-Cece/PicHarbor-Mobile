@@ -18,6 +18,10 @@ __pycache__/
 !/README.md
 !/README.zh-CN.md
 
+# Public bilingual user guide; other project documentation stays local.
+!/guides/ios-auto-renewal.md
+!/guides/ios-auto-renewal.zh-CN.md
+
 # Keep legal provenance and the format guide exported by the running app.
 !**/NOTICE.md
 !**/LICENSE.md
